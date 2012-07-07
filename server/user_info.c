@@ -8,10 +8,13 @@
 #include "main.h"
 #include "user_info.h"
 #include "utils.h"
+#include "crypt.h"
+
 
 void init_login_user(USER_INFO* info,Uint32 user_id,const char pass[USER_INFO_KEY_SIZE],const char* name);
 void free_login_user(USER_INFO* info);
 inline int login_pass_cmp(const USER_INFO* info,const char pass[USER_INFO_KEY_SIZE]);
+int logoff_user_np(USER_INFO* info,time_t now);
 
 void init_login(){
 	FILE* log_file;
@@ -106,6 +109,7 @@ void free_login(){
 void init_login_user(USER_INFO* info,Uint32 user_id,const char pass[USER_INFO_KEY_SIZE],const char* name){
 	info->user_id = user_id;
 	memcpy(info->pass,pass,USER_INFO_KEY_SIZE);
+	initCrypt(&info->crypt);
 	info->mutex = SDL_CreateMutex();
 	info->name = name;
 }
@@ -130,6 +134,7 @@ int login_user(USER_INFO* info,const char pass[USER_INFO_KEY_SIZE],Uint32 sessio
 		if(difftime(now,info->last_access) < USER_LOGIN_DEFINED_TIME){
 			return USER_LOGIN_ALREADY_LOGIN;
 		}
+		return logoff_user_np(info,now);
 	}
 	//パスワードが一致しなければ当然蹴る
 	if(!login_pass_cmp(info,pass))	return USER_LOGIN_PASSWORD_ERROR;
@@ -146,12 +151,21 @@ int logoff_user(USER_INFO* info,const char pass[USER_INFO_KEY_SIZE],Uint32 sessi
 	time_t now = time(NULL);
 	//すでにログオフしている
 	if(info->login_state == LOGOFF)			return USER_LOGOFF_NOT_LOGIN;
+	//最終アクセスから一定時間たっている場合はログオフします。
+	if(difftime(now,info->last_access) >= USER_LOGIN_DEFINED_TIME){
+		return (logoff_user_np(info,now));
+	}
 	//IPアドレスが異なれば蹴る
 	if(info->ip.host != ip->host)			return USER_LOGOFF_DIFFERENT_IP;
 	//パスワードが一致しなければ当然蹴る
 	if(!login_pass_cmp(info,pass))			return USER_LOGOFF_PASSWORD_ERROR;
 	//セッションIDが一致しなければ蹴る
 	if(info->session_id != session_id)		return USER_LOGOFF_INVALID_SESSIONID;
+	logoff_user_np(info,now);
+	return USER_LOGOFF_SUCCESS;
+}
+
+int logoff_user_np(USER_INFO* info,time_t now){
 	//書き換える前にはmutex
 	SDL_mutexP(info->mutex);
 		info->last_access = now;//アクセス時間の記録
@@ -167,7 +181,7 @@ int check_user(USER_INFO* info,const char pass[USER_INFO_KEY_SIZE],Uint32 sessio
 	if(info->login_state == LOGOFF)			return USER_CHECK_NOT_LOGIN;
 	//最終アクセスから一定時間経っている場合はログオフして、蹴る
 	if(difftime(now,info->last_access) >= USER_LOGIN_DEFINED_TIME){
-		return (logoff_user(info,pass,session_id,ip));
+		return (logoff_user_np(info,now));
 	}
 	//IPが異なる
 	if(info->ip.host != ip->host)			return USER_CHECK_DIFFERENT_IP;

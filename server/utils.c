@@ -113,7 +113,12 @@ inline void NetUtl_sendInt(TCPsocket* sock,Uint32 num){
 }
 inline Uint32 NetUtl_recvInt(TCPsocket* sock){
 	Uint32 num;
-	SDLNet_TCP_Recv(*sock,&num,sizeof(num));
+	int size;
+	int total_size = 0;
+	while((total_size < sizeof(num)) && 
+		((size = SDLNet_TCP_Recv(*sock,&num,sizeof(num))) > 0)){
+		total_size += size;
+	}
 	#if NEED_SWAP
 		num = SDL_Swap32(num);
 	#endif
@@ -128,7 +133,15 @@ inline void NetUtl_sendShort(TCPsocket* sock,Uint16 num){
 }
 inline Uint16 NetUtl_recvShort(TCPsocket* sock){
 	Uint16 num;
-	SDLNet_TCP_Recv(*sock,&num,sizeof(num));
+	int size;
+	int total_size = 0;
+
+	while((total_size < sizeof(num)) && 
+		((size = SDLNet_TCP_Recv(*sock,&num,sizeof(num))) > 0)){
+		total_size += size;
+	}
+
+
 	#if NEED_SWAP
 		num = SDL_Swap16(num);
 	#endif

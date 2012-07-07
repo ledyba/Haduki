@@ -10,6 +10,7 @@
 #include "request.h"
 #include "connection.h"
 #include "manager.h"
+#include "crypt.h"
 #include "utils.h"
 
 /*このファイル内のみで使う関数を宣言*/
@@ -17,7 +18,7 @@ void connection_return_req_data_header(CONNECTION_DATA* con,Uint32 result_code);
 void connection_return_req_data(CONNECTION_DATA* con,char* data,int size);
 void connection_connect(CONNECTION_DATA* con);
 void connection_send_error(TCPsocket* sock);
-void connection_do_request(CONNECTION_DATA* con,int content_length);
+int connection_do_request(CONNECTION_DATA* con,int content_length);
 void switch_request(CONNECTION_DATA* con);
 inline void case_action_request(CONNECTION_DATA* con);
 inline void case_action_connect(CONNECTION_DATA* con);
@@ -123,7 +124,6 @@ void connection_connect(CONNECTION_DATA* con){
 	}
 	/*とりあえず最後まで受信する。*/
 	if(is_err){//エラー
-		char ch;
 		/*ログに追加*/
 		log_file = lock_log_file();
 		time_output();
@@ -131,7 +131,7 @@ void connection_connect(CONNECTION_DATA* con){
 		fprintf(log_file,"%s\n",str);
 		unlock_log_file();
 		//最後まで受信するだけ
-		while(SDLNet_TCP_Recv(*sock, &ch, 1) == 1){
+		while(*(str = NetUtl_readLine(sock)) != END_CHAR){
 		}
 	}else{//ヘッダを取得する
 		while(*(str = NetUtl_readLine(sock)) != END_CHAR){
@@ -156,81 +156,105 @@ void connection_connect(CONNECTION_DATA* con){
 	unlock_connection(con);
 }
 /*リクエストを処理するに値する*/
-void connection_do_request(CONNECTION_DATA* con,int content_length){
-		TCPsocket* c_sock = &con->socket;
-		char* recv;
-		int idx = 0;
-		int size;
-		int total_size = 0;
-		//リクエスト関係
-		char pass[USER_INFO_KEY_SIZE];
-		char* host = NULL;
-		char* data = NULL;
-		Uint32 user_id;
-		Uint32 session_id;
-		Uint32 action_code;
-		Uint32 host_size;
-		Uint16 host_port = 0;
-		Uint32 data_size;
-		//データ受信
-		recv = malloc(content_length);
-		while((size = recvCrypt(&con->info->crypt,c_sock,
-						&recv[total_size],content_length-total_size)) > 0){
-			total_size += size;
-			if(total_size >= content_length){
-				break;
-			}
+int connection_do_request(CONNECTION_DATA* con,int content_length){
+	FILE* log_file;
+	TCPsocket* c_sock = &con->socket;
+	char* recv;
+	int idx = 0;
+	int size;
+	int total_size = 0;
+	USER_INFO* info;
+	REQUEST* req = &con->request;
+	//リクエスト関係
+	Uint32 user_id;
+	Uint32 action_code;
+	//非暗号化データ
+	user_id = NetUtl_recvInt(c_sock);
+	idx+=4;
+	action_code = NetUtl_recvInt(c_sock);
+	idx+=4;
+	content_length -= idx;
+	idx = 0;
+
+	//この時点でユーザ検索
+	info = get_user(user_id);
+	if(info == null){//ユーザが見つからない
+		char ch;
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"User NOT FOUND ID:%08x\n",user_id);
+		unlock_log_file();
+		//最後まで受信しないと、エラーになりがち。
+		while(SDLNet_TCP_Recv(*c_sock, &ch, 1) == 1){
 		}
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		return false;
+	}
 
-		//エラー
-		if(total_size <= 0){
-			free(recv);
-			return;
+	//鍵のバックアップ
+	backup_crypt_request(req,info);
+
+	//暗号化データ受信
+	recv = malloc(content_length);
+	while((size = recvCrypt(&info->crypt,c_sock,
+					&recv[total_size],content_length-total_size)) > 0){
+		total_size += size;
+		if(total_size >= content_length){
+			break;
 		}
-		//リクエスト完成
-		user_id = Utl_readInt(&recv[0]);
-		idx+=4;
+	}
 
-		memcpy(pass,&recv[idx],USER_INFO_KEY_SIZE);
-		idx+=USER_INFO_KEY_SIZE;
+	//接続
+	if(!connect_user(info)){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Already connected.\n",info->name);
+		unlock_log_file();
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		//リストア
+		restore_crypt_request(req);
+		return false;
+	}
 
-		session_id = Utl_readInt(&recv[idx]);
-		idx+=4;
-
-		action_code = Utl_readInt(&recv[idx]);
-		idx+=4;
-
-		host_size = Utl_readInt(&recv[idx]);
-		idx+=4;
-
-		if(host_size > 0 && host_size <= content_length - idx - 4 - 2){
-			host = malloc(host_size+1);
-			memcpy(host,&recv[idx],host_size);
-			host[host_size] = '\0';
-			idx+=host_size;
-
-			host_port = Utl_readShort(&recv[idx]);
-			idx+=2;
-
-		}
-
-		data_size = Utl_readInt(&recv[idx]);
-		idx+=4;
-
-		if(data_size > 0 && data_size <= content_length - idx){
-			data = malloc(data_size);
-			memcpy(data,&recv[idx],data_size);
-			idx+=data_size;
-		}
-
-		init_request(&con->request,user_id,pass,session_id,
-						action_code,host_port,host,data_size,data);
-		free(recv);
-		if(idx == total_size){//データサイズが合わない。
-			//リクエストの結果で分ける。
-			switch_request(con);
-		}
+	//エラー
+	if(total_size <= 0){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Zero Sized Request.\n",info->name);
+		unlock_log_file();
 		free_request(&con->request);
+		disconnect_user(info);
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		//リストア
+		restore_crypt_request(req);
+		return false;
+	}
+	//リクエスト完成
+	if(!init_request(&con->request,info,action_code,recv,total_size)){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Invalid Request.\n",info->name);
+		unlock_log_file();
+		free_request(&con->request);
+		disconnect_user(info);
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		//リストア
+		restore_crypt_request(req);
+		return false;
+	}
+	//スイッチ
+	switch_request(con);
+	disconnect_user(info);
+	free_request(&con->request);
+	return true;
 }
 /*リクエストの分岐*/
 void switch_request(CONNECTION_DATA* con){
@@ -254,41 +278,32 @@ void switch_request(CONNECTION_DATA* con){
 inline void case_action_connect(CONNECTION_DATA* con){
 	REQUEST* req = &con->request;
 	FILE* log_file;
-	int user_id = req->user_id;
 	int code;
-	USER_INFO* info = get_user(user_id);
-	if(info == null){//ユーザが見つからない
-		log_file = lock_log_file();
-		time_output();
-		ip_output(con->ip);
-		fprintf(log_file,"Login: USER NOT FOUND ID:%08x\n",user_id);
-		unlock_log_file();
-		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		return;
-	}
-	//接続
-	if(!connect_user(info)){
-		log_file = lock_log_file();
-		time_output();
-		ip_output(con->ip);
-		fprintf(log_file,"(%s)Login: Already connected.\n",info->name);
-		unlock_log_file();
-		//KICKED
-		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		return;
-	}
+	USER_INFO* info = req->info;
 	//ログイン
-	if((code = login_user(info,req->pass,req->session_id,con->ip)) != USER_LOGIN_SUCCESS){
+	code = login_user(info,req->pass,req->session_id,con->ip);
+	if(code == USER_LOGOFF_SUCCESS){//時間切れでログオフ
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Login Error:Time out and Loggoff\n",info->name);
+		unlock_log_file();
+		//KICK
+		connection_return_req_data_header(con,CONNECTION_ACTION_DISCONNECT);
+		initCrypt(&info->crypt);//この時点で暗号処理の初期化。
+		return;
+	}else if(code != USER_LOGIN_SUCCESS){//それ以外でエラー
 		log_file = lock_log_file();
 		time_output();
 		ip_output(con->ip);
 		fprintf(log_file,"(%s)Login Error:%d\n",info->name,code);
 		unlock_log_file();
+		//KICK
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		disconnect_user(info);
+		//リストア
+		restore_crypt_request(req);
 		return;
 	}
-	disconnect_user(info);
 	//成功
 	log_file = lock_log_file();
 	time_output();
@@ -301,30 +316,8 @@ inline void case_action_connect(CONNECTION_DATA* con){
 inline void case_action_dis_connect(CONNECTION_DATA* con){
 	REQUEST* req = &con->request;
 	FILE* log_file;
-	int user_id = req->user_id;
 	int code;
-	USER_INFO* info = get_user(req->user_id);
-	if(info == null){//ユーザが見つからない
-		log_file = lock_log_file();
-		time_output();
-		ip_output(con->ip);
-		fprintf(log_file,"Logoff: USER NOT FOUND ID:%08x\n",user_id);
-		unlock_log_file();
-		//KICKED
-		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		return;
-	}
-	//接続
-	if(!connect_user(info)){
-		log_file = lock_log_file();
-		time_output();
-		ip_output(con->ip);
-		fprintf(log_file,"(%s)Logoff: Already connected.\n",info->name);
-		unlock_log_file();
-		//KICKED
-		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		return;
-	}
+	USER_INFO* info = req->info;
 	//ログオフ
 	if((code = logoff_user(info,req->pass,req->session_id,con->ip)) != USER_LOGOFF_SUCCESS){
 		log_file = lock_log_file();
@@ -333,11 +326,11 @@ inline void case_action_dis_connect(CONNECTION_DATA* con){
 		fprintf(log_file,"(%s)Logoff Error:%d\n",info->name,code);
 		unlock_log_file();
 		//KICKED
-		disconnect_user(info);
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		//リストア
+		restore_crypt_request(req);
 		return;
 	}
-	disconnect_user(info);
 	//成功
 	log_file = lock_log_file();
 	time_output();
@@ -345,6 +338,7 @@ inline void case_action_dis_connect(CONNECTION_DATA* con){
 	fprintf(log_file,"(%s)Logoff Success\n",info->name);
 	unlock_log_file();
 	connection_return_req_data_header(con,CONNECTION_ACTION_DISCONNECT);
+	initCrypt(&info->crypt);//この時点で暗号処理の初期化。
 }
 
 inline char* connection_get_req_url(const char* str,int max);
@@ -353,39 +347,30 @@ inline void case_action_request(CONNECTION_DATA* con){
 	REQUEST* req = &con->request;
 	FILE* log_file;
 	int code;
-	USER_INFO* info = get_user(req->user_id);
-
-	if(info == null){//ユーザが見つからない
-		log_file = lock_log_file();
-		time_output();
-		ip_output(con->ip);
-		fprintf(log_file,"Request: USER NOT FOUND ID:%08x\n",req->user_id);
-		unlock_log_file();
-		return;
-	}
-
-	//接続
-	if(!connect_user(info)){
-		log_file = lock_log_file();
-		time_output();
-		ip_output(con->ip);
-		fprintf(log_file,"(%s)Request: Already connected.\n",info->name);
-		unlock_log_file();
-		//KICKED
-		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		return;
-	}
+	USER_INFO* info = req->info;
 
 	//チェック
-	if((code = check_user(info,req->pass,req->session_id,con->ip)) != USER_CHECK_SUCCESS){
+	code = check_user(info,req->pass,req->session_id,con->ip);
+	if(code == USER_LOGOFF_SUCCESS){//時間切れでログオフ
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Request Error:Time out and Loggoff\n",info->name);
+		unlock_log_file();
+		//KICK
+		connection_return_req_data_header(con,CONNECTION_ACTION_DISCONNECT);
+		initCrypt(&info->crypt);//この時点で暗号処理の初期化。
+		return;
+	}else if(code != USER_CHECK_SUCCESS){//それ以外のエラー
 		log_file = lock_log_file();
 		time_output();
 		ip_output(con->ip);
 		fprintf(log_file,"(%s)Request Error:%d\n",info->name,code);
 		unlock_log_file();
-		//KICKED
-		disconnect_user(info);
+		//KICK
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		//リストア
+		restore_crypt_request(req);
 		return;
 	}
 
@@ -421,9 +406,10 @@ inline void case_action_request(CONNECTION_DATA* con){
 		free(request_str);
 		}
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		//リストア
+		restore_crypt_request(req);
 	}
 	request_close_connection(req);
-	disconnect_user(info);
 }
 
 inline char* connection_get_req_url(const char* str,int max){
@@ -442,7 +428,7 @@ inline char* connection_get_req_url(const char* str,int max){
 void connection_send_error(TCPsocket* sock){
 	FILE* err_file = fopen("err_reply.txt", "rb");
 	int start,end,size;
-	char buff[1024];
+	char buff[4096];
 	/*ファイルサイズの取得*/
 	start = ftell(err_file);
 	fseek(err_file, 0, SEEK_END);
@@ -451,9 +437,8 @@ void connection_send_error(TCPsocket* sock){
 	size = end - start;
 	/*送信*/
 	while(size > 0){
-		fread(buff,1024,1,err_file);
-		SDLNet_TCP_Send(*sock, buff, min(1024,size));
-		size -= 1024;
+		fread(buff,4096,1,err_file);
+		size -= SDLNet_TCP_Send(*sock, buff, min(4096,size));
 	}
 	fclose(err_file);
 }
@@ -468,19 +453,17 @@ void connection_return_req_data_header(CONNECTION_DATA* con,Uint32 result_code){
 	TCPsocket* sock = &con->socket;
 	//ヘッダ
 	NetUtl_sendLine(sock,
-	"HTTP/1.1 200 OK\n"
-	"Date: Thu, 26 Apr 2007 09:04:24 GMT\n"
-	"Server: Haduki\n"
-	"Content-Type: image/x-png\n"
+	"HTTP/1.1 200 OK\r\n"
+	"Date: Thu, 26 Apr 2007 09:04:24 GMT\r\n"
+	"Server: Haduki\r\n"
+	"Connection: close\r\n"
+	"Content-Type: image/x-png\r\n"
+	"\r\n"
 	);
-	//sprintf(content_length_header,"Content-Length: %d\n",size+4);
-	//NetUtl_sendLine(sock,content_length_header);
-	//データ送信
-	NetUtl_sendLine(sock,"\n");
 	//リザルトコード
-	sendCrypt(&con->info->crypt,sock,(char*)&res_code_swapped,4);
+	sendCrypt(&con->request.info->crypt,sock,(char*)&res_code_swapped,4);
 }
 void connection_return_req_data(CONNECTION_DATA* con,char* data,int size){
 	//データ
-	if(data != NULL && size > 0)sendCrypt(&con->info->crypt,&con->socket,data,size);
+	if(data != NULL && size > 0)sendCrypt(&con->request.info->crypt,&con->socket,data,size);
 }

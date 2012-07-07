@@ -13,20 +13,20 @@ typedef struct REQUEST{
 	Uint32 data_size;
 	char* data;
 	//ÄÌ¿®
+	USER_INFO* info;
+	CRYPT backup;
+	int enc_size;
+	char* enc_data;
 	int connected;
 	IPaddress ip;
 	TCPsocket sock;
 }REQUEST;
 
-void init_request(REQUEST* req,
-			Uint32 user_id,
-			const char pass[USER_INFO_KEY_SIZE],
-			Uint32 session_id,
-			Uint32 action_code,
-			Uint16 host_port,
-			char* host,
-			Uint32 data_size,
-			char* data);
+int init_request(REQUEST* req,USER_INFO* info,Uint32 action_code,char* enc_data,int size);
+
+void backup_crypt_request(REQUEST* req,USER_INFO* info);
+void restore_crypt_request(REQUEST* req);
+
 int connect_request(REQUEST* req);
 int send_request(REQUEST* req);
 TCPsocket* request_get_sock(REQUEST* req);

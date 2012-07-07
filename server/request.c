@@ -5,27 +5,89 @@
 #include <unistd.h>
 #include <signal.h>
 #include "main.h"
+#include "utils.h"
 #include "request.h"
 
-void init_request(REQUEST* req,
-			Uint32 user_id,
-			const char pass[USER_INFO_KEY_SIZE],
-			Uint32 session_id,
-			Uint32 action_code,
-			Uint16 host_port,
-			char* host,
-			Uint32 data_size,
-			char* data){
-	req->user_id = user_id;
-	memcpy(req->pass,pass,USER_INFO_KEY_SIZE);
-	req->session_id = session_id;
+
+int parse_request(REQUEST* req);
+int init_request(REQUEST* req,USER_INFO* info,Uint32 action_code,char* enc_data,int size){
+	req->user_id = info->user_id;
 	req->action_code = action_code;
-	req->host_port = host_port;
-	req->host = host;
-	req->data_size = data_size;
-	req->data = data;
-	req->connected = false;
+	req->info = info;
+	req->enc_size = size;
+	req->enc_data = enc_data;
+	req->host = null;
+	req->data = null;
+	return (parse_request(req));
 }
+
+void backup_crypt_request(REQUEST* req,USER_INFO* info){
+		backupCrypt(&req->backup,&info->crypt);
+}
+void restore_crypt_request(REQUEST* req){
+		restoreCrypt(&req->info->crypt,&req->backup);
+}
+
+int parse_request(REQUEST* req){
+	char* recv = req->enc_data;
+	int idx = 0;
+	int total_size = req->enc_size;
+	int host_size;
+	int state = false;
+
+	memcpy(req->pass,&recv[idx],USER_INFO_KEY_SIZE);
+	idx+=USER_INFO_KEY_SIZE;
+
+	req->session_id = Utl_readInt(&recv[idx]);
+	idx+=4;
+
+	host_size = Utl_readInt(&recv[idx]);
+	idx+=4;
+
+	if(host_size > 0 && host_size <= total_size - idx - 4 -2){
+		req->host = malloc(host_size+1);
+		memcpy(req->host,&recv[idx],host_size);
+		req->host[host_size] = '\0';
+		idx+=host_size;
+
+		req->host_port = Utl_readShort(&recv[idx]);
+		idx+=2;
+	}else if(host_size == 0 && total_size - idx - 4 == 0){
+		req->host = null;
+	}else{
+		req->host = null;
+		goto end;
+	}
+
+	req->data_size = Utl_readInt(&recv[idx]);
+	idx+=4;
+
+	if(req->data_size > 0 && req->data_size <= total_size - idx){
+		req->data = malloc(req->data_size);
+		memcpy(req->data,&recv[idx],req->data_size);
+		idx+=req->data_size;
+	}else if(req->data_size == 0){
+		req->data = null;
+	}else{
+		free(req->host);
+		req->host = null;
+		req->data = null;
+		goto end;
+	}
+	if(idx != total_size){
+		free(req->host);
+		free(req->data);
+		req->host = null;
+		req->data = null;
+		goto end;
+	}
+	state = true;
+end:
+	free(recv);
+	req->enc_data = null;
+	return state;
+}
+
 int connect_request(REQUEST* req){
 	if(SDLNet_ResolveHost(&req->ip,req->host,req->host_port)==-1){
 	    printf("connect_request: %s\n", SDLNet_GetError());
@@ -60,4 +122,5 @@ void request_close_connection(REQUEST* req){
 void free_request(REQUEST* req){
 	free(req->host);
 	free(req->data);
+	free(req->enc_data);
 }
