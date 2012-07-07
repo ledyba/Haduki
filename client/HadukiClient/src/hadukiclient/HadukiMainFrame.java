@@ -133,7 +133,7 @@ public class HadukiMainFrame extends JFrame {
         contentPane = (JPanel) getContentPane();
         contentPane.setLayout(borderLayout1);
         setSize(new Dimension(300, 400));
-        setTitle("「葉月」");
+        setTitle("「はづき」クライアント for HTTP");
         statusBar.setText(" ");
         jMenuFile.setText("ファイル");
         jMenuFileExit.setText("終了");
@@ -144,7 +144,7 @@ public class HadukiMainFrame extends JFrame {
         jMenuHelpAbout.addActionListener(new
                                          HadukiMainFrame_jMenuHelpAbout_ActionAdapter(this));
         TitleLabel.setFont(new java.awt.Font("Dialog", Font.PLAIN, 20));
-        TitleLabel.setText("「葉月」");
+        TitleLabel.setText("「はづき」for HTTP");
         UsingProxyCheck.setSelected(DefaultProxyServerUsing);
         UsingProxyCheck.setText("Using proxy");
         MainPanel.setLayout(gridBagLayout1);

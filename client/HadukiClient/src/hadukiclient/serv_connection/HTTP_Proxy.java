@@ -68,18 +68,6 @@ public class HTTP_Proxy {
                         new AuthScope(Host, Port, null, AuthScope.ANY_SCHEME),
                         Cred
                         );
-                OriginalNTLMScheme sh = new OriginalNTLMScheme();
-                try {
-                    sh.processChallenge("NTLM");
-                    System.out.println(sh.authenticate(Cred, null));
-                    sh.processChallenge("NTLM TlRMTVNTUAACAAAACwALADgAAAAGAoECw3qCm6QhatAAAAAAAAAAAIQAhABDAAAABQCTCAAAAA9NRURJQUNFTlRFUgIAFgBNAEUARABJAEEAQwBFAE4AVABFAFIAAQAKAFMAVABTAFIAVgAEACIAbQBlAGQAaQBhAGMAZQBuAHQAZQByAC4AbABvAGMAYQBsAAMALgBzAHQAcwByAHYALgBtAGUAZABpAGEAYwBlAG4AdABlAHIALgBsAG8AYwBhAGwAAAAAAA==");
-                    System.out.println(sh.authenticate(Cred, null));
-                } catch (AuthenticationException ex) {
-                    ex.printStackTrace();
-                } catch (MalformedChallengeException ex) {
-                    ex.printStackTrace();
-                }
-
             }
         }
     }

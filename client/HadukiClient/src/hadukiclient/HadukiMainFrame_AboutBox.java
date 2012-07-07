@@ -32,10 +32,10 @@ public class HadukiMainFrame_AboutBox extends JDialog implements ActionListener 
     ImageIcon image1 = new ImageIcon();
     BorderLayout borderLayout1 = new BorderLayout();
     FlowLayout flowLayout1 = new FlowLayout();
-    String product = "「葉月」";
-    String version = "Version 1.0 (2007/05/10)";
-    String copyright = "Copyright (C) 2007 PSI";
-    String comment1 = "おにいさま、ふるふるふるむーん！";
+    String product = "「はづき」クライアント for HTTP";
+    String version = "Version 1.0(2007/08/17)";
+    String copyright = "Copyright (C) 2007 PSI/Pegasus";
+    String comment1 = "パイパイポンポイ プワプワプ～！";
     String comment2 = "・・・はぁorz";
     GridBagLayout gridBagLayout1 = new GridBagLayout();
     GridBagLayout gridBagLayout2 = new GridBagLayout();

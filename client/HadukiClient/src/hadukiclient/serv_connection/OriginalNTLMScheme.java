@@ -140,8 +140,8 @@ public class OriginalNTLMScheme implements AuthScheme {
         try {
             byte[] lm_nonce = new byte[8];
             rnd.nextBytes(lm_nonce);
-            /*
             lm_resp =
+                    /*
                     Responses.getLMv2Response(cre.getDomain(),
                                               cre.toString(),
                                               cre.getPassword(),
