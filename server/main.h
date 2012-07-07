@@ -7,7 +7,16 @@
 #define PORT 44444
 #define false	0
 #define true	1
+#define null NULL
 
 int main(int argc,char *argv[]);
+
+//ログファイル
+void init_log_file();
+void free_log_file();
+FILE* lock_log_file();
+void unlock_log_file();
+//時間
+void time_output();
 
 #endif /*MAIN_H_*/

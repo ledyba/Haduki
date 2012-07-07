@@ -10,9 +10,9 @@
 #	 ↓パッケージ名かつ実行ファイル名に書き換える
 PACKAGE	= Haduki
 #	 ↓ソースファイルを書き並べる
-SRCS	= main.c connection.c manager.c utils.c request.c
+SRCS	= main.c connection.c manager.c utils.c request.c user_info.c encrypt.c
 #	 ↓ヘッダファイルを書き並べる
-HEADS	= main.h connection.h manager.h utils.h request.h
+HEADS	= main.h connection.h manager.h utils.h request.h user_info.h encrypt.h
 OBJS	= $(SRCS:.c=.o)
 
 #	 ↓パッケージに含めるファイル名を書き並べる
@@ -37,7 +37,7 @@ CPPFLAGS= -I. `sdl-config --cflags`
 
 # C++ (*.cc)
 CXX	= g++
-CXXFLAGS= -g -O2 -Wall $(DEBUG)
+CXXFLAGS= -g -O3 -Wall $(DEBUG)
 
 # Fortran77 (*.f)
 FC	= f77

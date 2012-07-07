@@ -56,8 +56,14 @@ void manager_write_action_code(int pipe,int code,void* data,int size){
 void manager_main(){
 	int end = false;
 	int i,connected;
+	FILE* log_file;
 	/*下ごしらえ*/
 	manager_init();
+	/*ログに追加*/
+	log_file = lock_log_file();
+	time_output();
+	fprintf(log_file,"Haduki started\n");
+	unlock_log_file();
 	/*通信*/
 	while(!end){
 		if(SDLNet_CheckSockets(SockSet, -1) < 0)continue;
@@ -66,7 +72,7 @@ void manager_main(){
 		connected = false;
 		for(i=0;i<THREAD_MAX;i++){
 			CONNECTION_DATA* con = &ConnectionData[i];
-			if(con->is_connected == NOT_CONNECTED){
+			if(!is_locked_connection(con)){
 				/*指示*/
 				manager_write_action_code(	con->com_pipe[PIPE_WRITE],
 											MANAGER_ACTION_CONNET,

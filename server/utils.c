@@ -35,6 +35,9 @@ char* NetUtl_readLine(TCPsocket* sock){
 	}
 	return buff;
 }
+inline void NetUtl_sendLine(TCPsocket* sock,const char* str){
+	SDLNet_TCP_Send(*sock, str, strlen(str));
+}
 
 inline int min(int a,int b){
 	return a > b ? b :a;
@@ -53,12 +56,28 @@ inline void NetUtl_sendInt(TCPsocket* sock,Uint32 num){
 }
 inline Uint32 NetUtl_recvInt(TCPsocket* sock){
 	Uint32 num;
-	SDLNet_TCP_Send(*sock,&num,sizeof(num));
+	SDLNet_TCP_Recv(*sock,&num,sizeof(num));
 	#ifdef NEED_SWAP
 		num = SDL_Swap32(num);
 	#endif
 	return num;
 }
+
+inline void NetUtl_sendShort(TCPsocket* sock,Uint16 num){
+	#ifdef NEED_SWAP
+		num = SDL_Swap16(num);
+	#endif
+	SDLNet_TCP_Send(*sock,&num,sizeof(num));
+}
+inline Uint16 NetUtl_recvShort(TCPsocket* sock){
+	Uint16 num;
+	SDLNet_TCP_Recv(*sock,&num,sizeof(num));
+	#ifdef NEED_SWAP
+		num = SDL_Swap16(num);
+	#endif
+	return num;
+}
+
 
 inline Uint32 Utl_readInt(char* data){
 	Uint32 num;
@@ -79,4 +98,21 @@ inline void Utl_writeInt(Uint32 num,char* data){
 		data[1] = (num & 0x00FF0000) >> 16;
 		data[2] = (num & 0x0000FF00) >>  8;
 		data[3] = (num & 0x000000FF) >>  0;
+}
+
+inline Uint16 Utl_readShort(char* data){
+	Uint16 num;
+	num =	(data[0] << 8) + 
+			(data[1] << 0);
+	#ifdef NEED_SWAP
+		num = SDL_Swap16(num);
+	#endif
+	return num;
+}
+inline void Utl_writeShort(Uint16 num,char* data){
+	#ifdef NEED_SWAP
+		num = SDL_Swap16(num);
+	#endif
+		data[0] = (num & 0xFF00) >> 8;
+		data[1] = (num & 0x00FF) >> 0;
 }
