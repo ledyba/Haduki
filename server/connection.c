@@ -15,7 +15,7 @@
 
 /*このファイル内のみで使う関数を宣言*/
 void connection_return_req_data_header(CONNECTION_DATA* con,Uint32 result_code);
-void connection_return_req_data(CONNECTION_DATA* con,char* data,int size);
+int connection_return_req_data(CONNECTION_DATA* con,char* data,int size);
 void connection_connect(CONNECTION_DATA* con);
 void connection_send_error(TCPsocket* sock);
 int connection_do_request(CONNECTION_DATA* con,int content_length);
@@ -164,7 +164,7 @@ int connection_do_request(CONNECTION_DATA* con,int content_length){
 	int size;
 	int total_size = 0;
 	USER_INFO* info;
-	REQUEST* req = &con->request;
+	CRYPT* crypt;
 	//リクエスト関係
 	Uint32 user_id;
 	Uint32 action_code;
@@ -175,66 +175,68 @@ int connection_do_request(CONNECTION_DATA* con,int content_length){
 	idx+=4;
 	content_length -= idx;
 	idx = 0;
-
 	//この時点でユーザ検索
 	info = get_user(user_id);
 	if(info == null){//ユーザが見つからない
 		char ch;
+		int size = 0;
 		log_file = lock_log_file();
 		time_output();
 		ip_output(con->ip);
 		fprintf(log_file,"User NOT FOUND ID:%08x\n",user_id);
 		unlock_log_file();
 		//最後まで受信しないと、エラーになりがち。
-		while(SDLNet_TCP_Recv(*c_sock, &ch, 1) == 1){
+		while(size < content_length && SDLNet_TCP_Recv(*c_sock, &ch, 1) == 1){
+			size++;
 		}
-		//KICKED
-		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
 		return false;
 	}
 
-	//鍵のバックアップ
-	backup_crypt_request(req,info);
+	//接続
+	if(!connect_user(info)){
+		char ch;
+		int size = 0;
+		//ログ
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Already connected.\n",info->name);
+		unlock_log_file();
+		//最後まで受信しないと、エラーになりがち。
+		while(size < content_length && SDLNet_TCP_Recv(*c_sock, &ch, 1) == 1){
+			size++;
+		}
+		return false;
+	}
+
+	//鍵を使うと宣言
+	crypt = &info->crypt;
+	startCrypt(crypt);
 
 	//暗号化データ受信
 	recv = malloc(content_length);
-	while((size = recvCrypt(&info->crypt,c_sock,
+	while((size = recvCrypt(crypt,c_sock,
 					&recv[total_size],content_length-total_size)) > 0){
 		total_size += size;
 		if(total_size >= content_length){
 			break;
 		}
 	}
-
-	//接続
-	if(!connect_user(info)){
+	//サイズがあわない。
+	if(total_size < content_length){
 		log_file = lock_log_file();
 		time_output();
 		ip_output(con->ip);
-		fprintf(log_file,"(%s)Already connected.\n",info->name);
+		fprintf(log_file,"(%s)Invalid Size Request.\n",info->name);
 		unlock_log_file();
-		//KICKED
-		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		//リストア
-		restore_crypt_request(req);
-		return false;
-	}
-
-	//エラー
-	if(total_size <= 0){
-		log_file = lock_log_file();
-		time_output();
-		ip_output(con->ip);
-		fprintf(log_file,"(%s)Zero Sized Request.\n",info->name);
-		unlock_log_file();
-		free_request(&con->request);
+		//処理
+		free(recv);
 		disconnect_user(info);
 		//KICKED
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		//リストア
-		restore_crypt_request(req);
 		return false;
 	}
+
 	//リクエスト完成
 	if(!init_request(&con->request,info,action_code,recv,total_size)){
 		log_file = lock_log_file();
@@ -242,12 +244,11 @@ int connection_do_request(CONNECTION_DATA* con,int content_length){
 		ip_output(con->ip);
 		fprintf(log_file,"(%s)Invalid Request.\n",info->name);
 		unlock_log_file();
+		//処理
 		free_request(&con->request);
 		disconnect_user(info);
 		//KICKED
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		//リストア
-		restore_crypt_request(req);
 		return false;
 	}
 	//スイッチ
@@ -300,8 +301,6 @@ inline void case_action_connect(CONNECTION_DATA* con){
 		unlock_log_file();
 		//KICK
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		//リストア
-		restore_crypt_request(req);
 		return;
 	}
 	//成功
@@ -311,6 +310,8 @@ inline void case_action_connect(CONNECTION_DATA* con){
 	fprintf(log_file,"(%s)Login Success\n",info->name);
 	unlock_log_file();
 	connection_return_req_data_header(con,CONNECTION_ACTION_ACCEPT);
+	//次のストリームへ
+	nextStream(&info->crypt);
 }
 /*ケース：切断*/
 inline void case_action_dis_connect(CONNECTION_DATA* con){
@@ -327,8 +328,6 @@ inline void case_action_dis_connect(CONNECTION_DATA* con){
 		unlock_log_file();
 		//KICKED
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		//リストア
-		restore_crypt_request(req);
 		return;
 	}
 	//成功
@@ -369,8 +368,6 @@ inline void case_action_request(CONNECTION_DATA* con){
 		unlock_log_file();
 		//KICK
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		//リストア
-		restore_crypt_request(req);
 		return;
 	}
 
@@ -383,11 +380,23 @@ inline void case_action_request(CONNECTION_DATA* con){
 		//ヘッダを返す
 		connection_return_req_data_header(con,CONNECTION_ACTION_RESULT);
 		//データ
-		do{
-			size = SDLNet_TCP_Recv(*s_sock,data,4096);
+		while((size = SDLNet_TCP_Recv(*s_sock,data,4096)) > 0){
 			total_size+=size;
-			connection_return_req_data(con,data,size);
-		}while(size > 0);
+			if(connection_return_req_data(con,data,size) < size){
+				{//接続リセット
+				char* request_str = connection_get_req_url(req->data,req->data_size);
+				log_file = lock_log_file();
+				time_output();
+				fprintf(log_file,"(%s)<%s:%d>%s Connection reset.\n",info->name,req->host,req->host_port,request_str);
+				unlock_log_file();
+				free(request_str);
+				}
+				//次のストリームへ
+				nextStream(&info->crypt);
+				request_close_connection(req);
+				return;
+			}
+		}
 		{//データ送信終了
 		char* request_str = connection_get_req_url(req->data,req->data_size);
 		log_file = lock_log_file();
@@ -406,9 +415,9 @@ inline void case_action_request(CONNECTION_DATA* con){
 		free(request_str);
 		}
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
-		//リストア
-		restore_crypt_request(req);
 	}
+	//次のストリームへ
+	nextStream(&info->crypt);
 	request_close_connection(req);
 }
 
@@ -463,7 +472,10 @@ void connection_return_req_data_header(CONNECTION_DATA* con,Uint32 result_code){
 	//リザルトコード
 	sendCrypt(&con->request.info->crypt,sock,(char*)&res_code_swapped,4);
 }
-void connection_return_req_data(CONNECTION_DATA* con,char* data,int size){
+int connection_return_req_data(CONNECTION_DATA* con,char* data,int size){
 	//データ
-	if(data != NULL && size > 0)sendCrypt(&con->request.info->crypt,&con->socket,data,size);
+	if(data != NULL && size > 0){
+		return sendCrypt(&con->request.info->crypt,&con->socket,data,size);
+	}
+	return -1;
 }

@@ -45,11 +45,33 @@ const char RC4_KEY[RC4_KEY_LENGTH] = {
 
 inline char crypt_char(CRYPT* cry,char n);
 inline char decrypt_char(CRYPT* cry,char n);
-inline char get_crypt_char(CRYPT* cry);
+inline char next_char(STREAM* str);
+
+inline void init_stream(STREAM* str,const char key[RC4_KEY_LENGTH]);
 
 void initCrypt(CRYPT* cry){
+	STREAM* master = &cry->master;
+	init_stream(master,RC4_KEY);
+	nextStream(cry);
+}
+void startCrypt(CRYPT* cry){
+	//バックアップから戻す
+	memcpy(&cry->stream,&cry->backup,sizeof(cry->backup));
+}
+void nextStream(CRYPT* cry){
+	//あたらしいstreamの設定
+	char new_key[RC4_KEY_LENGTH];
+	int i;
+	STREAM* master = &cry->master;
+	for(i=0;i<RC4_KEY_LENGTH;i++){
+		new_key[i] = next_char(master);
+	}
+	init_stream(&cry->backup,new_key);//使うときにコピーする
+}
+
+inline void init_stream(STREAM* str,const char key[RC4_KEY_LENGTH]){
 	int i,j,tmp;
-	char* s = cry->key;
+	char* s = str->key;
 	//Sボックス初期化
 	for(i=0;i<RC4_KEY_LENGTH;i++){
 		s[i] = i;
@@ -57,26 +79,26 @@ void initCrypt(CRYPT* cry){
 	//キーを使ってシャッフル
 	j = 0;
 	for(i=0;i<RC4_KEY_LENGTH;i++){
-		j = (j + s[i] + RC4_KEY[i]) & 0xff;
+		j = (j + s[i] + key[i]) & 0xff;
 		tmp = s[i];
 		s[i] = s[j];
 		s[j] = tmp;
 	}
 	//キー製作用index
-	cry->i = 0;
-	cry->j = 0;
+	str->i = 0;
+	str->j = 0;
 }
 
-inline char get_crypt_char(CRYPT* cry){
-	char* s = cry->key;
-	int i = cry->i;
-	int j = cry->j;
+inline char next_char(STREAM* str){
+	char* s = str->key;
+	int i = str->i;
+	int j = str->j;
 	int tmp;
 	//インデックスのセット
 	i = (i+1) & 0xff;
 	j = (j+s[i]) & 0xff;
-	cry->i = i;
-	cry->j = j;
+	str->i = i;
+	str->j = j;
 	//入れ替え
 	tmp = s[i];
 	s[i] = s[j];
@@ -86,12 +108,12 @@ inline char get_crypt_char(CRYPT* cry){
 
 //こうすると、暗号文同士のxorを取ってもあまり意味が無い（たぶん）
 inline char encrypt_char(CRYPT* cry,char n){
-	char k = get_crypt_char(cry);
+	char k = next_char(&cry->stream);
 	n = (n+k) & 0xff;
 	return n ^ k;
 }
 inline char decrypt_char(CRYPT* cry,char n){
-	char k = get_crypt_char(cry);
+	char k = next_char(&cry->stream);
 	n ^= k;
 	return (n-k)&0xff;
 }
@@ -110,9 +132,9 @@ void decryptData(CRYPT* cry,char* data,int size){
 }
 
 
-void sendCrypt(CRYPT* cry,TCPsocket* sock,char* data,int size){
+int sendCrypt(CRYPT* cry,TCPsocket* sock,char* data,int size){
 	encryptData(cry,data,size);
-	SDLNet_TCP_Send(*sock,data,size);
+	return SDLNet_TCP_Send(*sock,data,size);
 }
 
 int recvCrypt(CRYPT* cry,TCPsocket* sock,char* data,int size){
@@ -120,9 +142,3 @@ int recvCrypt(CRYPT* cry,TCPsocket* sock,char* data,int size){
 	decryptData(cry,data,ret);
 	return ret;
 }
-void copyCrypt(CRYPT* dst,const CRYPT* src){
-	dst->i = src->i;
-	dst->j = src->j;
-	memcpy(dst->key,src->key,RC4_KEY_LENGTH);
-}
-

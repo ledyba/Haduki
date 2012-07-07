@@ -24,9 +24,6 @@ typedef struct REQUEST{
 
 int init_request(REQUEST* req,USER_INFO* info,Uint32 action_code,char* enc_data,int size);
 
-void backup_crypt_request(REQUEST* req,USER_INFO* info);
-void restore_crypt_request(REQUEST* req);
-
 int connect_request(REQUEST* req);
 int send_request(REQUEST* req);
 TCPsocket* request_get_sock(REQUEST* req);

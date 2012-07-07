@@ -21,13 +21,6 @@ int init_request(REQUEST* req,USER_INFO* info,Uint32 action_code,char* enc_data,
 	return (parse_request(req));
 }
 
-void backup_crypt_request(REQUEST* req,USER_INFO* info){
-		backupCrypt(&req->backup,&info->crypt);
-}
-void restore_crypt_request(REQUEST* req){
-		restoreCrypt(&req->info->crypt,&req->backup);
-}
-
 int parse_request(REQUEST* req){
 	char* recv = req->enc_data;
 	int idx = 0;

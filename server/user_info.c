@@ -196,26 +196,30 @@ int check_user(USER_INFO* info,const char pass[USER_INFO_KEY_SIZE],Uint32 sessio
 	return USER_CHECK_SUCCESS;
 }
 int connect_user(USER_INFO* info){
+	int ret;
 	SDL_mutexP(info->mutex);
-		if(info->connection_state != CONNECTED){
+		if(info->connection_state == DISCONNECTED){
 			info->connection_state = CONNECTED;
-			SDL_mutexV(info->mutex);
-			return true;
+			ret = true;
 		}else{
-			SDL_mutexV(info->mutex);
-			return false;
+			info->connection_state = CONNECTED;
+			ret = false;
 		}
+	SDL_mutexV(info->mutex);
+	return ret;
 }
 int disconnect_user(USER_INFO* info){
+	int ret;
 	SDL_mutexP(info->mutex);
 		if(info->connection_state == CONNECTED){
 			info->connection_state = DISCONNECTED;
-			SDL_mutexV(info->mutex);
-			return true;
+			ret = true;
 		}else{
-			SDL_mutexV(info->mutex);
-			return false;
+			info->connection_state = DISCONNECTED;
+			ret = false;
 		}
+	SDL_mutexV(info->mutex);
+	return ret;
 }
 
 inline int login_pass_cmp(const USER_INFO* info,const char pass[USER_INFO_KEY_SIZE]){
