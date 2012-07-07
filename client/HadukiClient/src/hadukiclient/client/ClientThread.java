@@ -86,6 +86,7 @@ public class ClientThread extends Thread {
             int content_length = -1;
             do {
                 str = TextIn.readLine();
+                if(str == null)break;
                 if (line == 0) {
                     int start = str.indexOf(HTTP_URL_START);
                     int host_start = start + HTTP_URL_START.length();
@@ -133,13 +134,13 @@ public class ClientThread extends Thread {
             //Œ‹‰Ê‚ð•Ô‚·
             if (req.getConnected()) {
                 if (req.getReceived()) {
-                    if (req.getResultCode() == ServerCommunicator.ACTION_KICKED) {
+                    if (req.getResultCode() != ServerCommunicator.ACTION_RESULT){
                         TextOut.write(
                                 "Kicked."
                                 );
                         TextOut.flush();
                     } else {
-                        InputStream res_dis = req.getResultStream();
+                        InputStream res_dis = req.getRecvInputStream();
                         try{
                             byte[] data = new byte[Request.BUFF_SIZE];
                             int in;

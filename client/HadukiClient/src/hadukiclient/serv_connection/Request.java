@@ -21,9 +21,6 @@ import java.util.concurrent.locks.Lock;
  */
 public class Request {
     public static final int BUFF_SIZE = 4096;
-    private final Lock Lock = new ReentrantLock();
-    private boolean Encrypted = false;
-    private final Condition EncryptedCond = Lock.newCondition();
     private LoginInfo LoginInfo;
     //送信
     private byte[] Data;
@@ -39,12 +36,7 @@ public class Request {
     }
 
     public Request(LoginInfo info, int action_code) {
-        if (action_code != ServerCommunicator.ACTION_CONNECT) {
-            //切断
-            init(info, action_code, (short) 0, null, null);
-        } else { //接続
-            init(info, action_code, (short) 0, null, info.getPublicKey());
-        }
+        init(info, action_code, (short) 0, null, null);
     }
 
     //初期化
@@ -63,9 +55,9 @@ public class Request {
         //データの作成
         try {
             dos.writeInt(LoginInfo.getUserID());
+            dos.writeInt(action_code);
             dos.write(LoginInfo.getPassword());
             dos.writeInt(LoginInfo.getSessionID());
-            dos.writeInt(action_code);
             dos.writeInt(host == null ? 0 : host.length());
             if (host != null) {
                 dos.write(host.getBytes());
@@ -84,39 +76,17 @@ public class Request {
         } catch (IOException ex) {
             ex.printStackTrace();
         }
-        //ロック
-        Lock.lock();
-        /*テスト*/
-        for (int i = 0; i < Data.length; i++) {
-            //Data[i] ^= 45;
-        }
-        /*テスト*/
-        //ロック解除
-        try {
-            Encrypted = true;
-            EncryptedCond.signalAll();
-        } finally {
-            Lock.unlock();
-        }
     }
 
     //送信データ
     public byte[] getSendingData() {
-        if (!Encrypted) {
-            Lock.lock();
-            try {
-                EncryptedCond.await();
-            } catch (InterruptedException ex) {
-                ex.printStackTrace();
-            } finally {
-                Lock.unlock();
-            }
-        }
+        //暗号化
+        LoginInfo.getCrypt().outputData(Data, 8, Data.length - 8);
         return Data;
     }
 
     //受信データの受け取りはストリームで行う
-    public OutputStream getReceivedStream() {
+    public OutputStream getRecvOutputStream() {
         return ROS;
     }
 
@@ -129,7 +99,7 @@ public class Request {
     }
 
     //復号化したデータを受け取る
-    public InputStream getResultStream() {
+    public InputStream getRecvInputStream() {
         if (!getReceived()) {
             return null;
         }
@@ -143,7 +113,7 @@ public class Request {
 
     public synchronized void signalReceived(boolean flag) {
         ReceivedLock.lock();
-        if(flag == true){
+        if (flag == true) {
             try {
                 DataInputStream dis = new DataInputStream(RIS);
                 ResultCode = dis.readInt();
@@ -152,7 +122,7 @@ public class Request {
                 ex.printStackTrace();
                 Received = false;
             }
-        }else{
+        } else {
             Received = false;
         }
         ReceivedDecided = true;

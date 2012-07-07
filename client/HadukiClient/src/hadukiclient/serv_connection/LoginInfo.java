@@ -1,5 +1,7 @@
 package hadukiclient.serv_connection;
 
+import hadukiclient.crypt.Crypt;
+
 /**
  * <p>タイトル: 「葉月」</p>
  *
@@ -12,13 +14,11 @@ package hadukiclient.serv_connection;
  * @author 未入力
  * @version 1.0
  */
-public class LoginInfo {
+public class LoginInfo{
     private int UserID;
     private int SessionID;
     private byte[] Password;
-    private byte[] PublicKey;
-    private byte[] PrivateKey;
-
+    private Crypt Crypt = new Crypt();
     public LoginInfo(int user_id,byte[] password) {
         UserID = user_id;
         Password = password;
@@ -29,25 +29,21 @@ public class LoginInfo {
         return UserID;
     }
 
-    public byte[] getPassword() {
+    public final byte[] getPassword() {
         return Password;
-    }
-
-    public boolean calcKey(){
-        PublicKey = new byte[32];
-        PrivateKey = new byte[32];
-        return true;
     }
 
     public int getSessionID(){
         return SessionID;
     }
-
-    public byte[] getPublicKey() {
-        return PublicKey;
+    public Crypt getCrypt(){
+        return Crypt;
     }
-
-    public byte[] getPrivateKey() {
-        return PrivateKey;
+    private Crypt backup;
+    public void backupCrypt(){
+        backup = (Crypt)Crypt.clone();
+    }
+    public void restoreCrypt(){
+        Crypt = (Crypt)backup.clone();
     }
 }

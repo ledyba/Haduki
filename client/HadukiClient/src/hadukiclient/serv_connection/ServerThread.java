@@ -3,7 +3,6 @@ package hadukiclient.serv_connection;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.Lock;
-import java.net.ConnectException;
 
 /**
  * <p>タイトル: 「葉月」</p>
@@ -39,13 +38,6 @@ public class ServerThread extends Thread {
     }
 
     public void run() {
-        //鍵生成
-        if (!ServerCom.prepareKeys()) {
-            //エラー
-            Connected = CODE_CANNNOT_PREPARE_KEY;
-            ConnectedCond.signalAll();
-            return;
-        }
         try {/*接続要求*/
             ConnectedLock.lock();
             boolean start_flag = ServerCom.sendConnectionStart();
@@ -56,6 +48,7 @@ public class ServerThread extends Thread {
             }
             Connected = CODE_CONNECTED;
         } catch (Exception e){
+            e.printStackTrace();
             Connected = CODE_ERROR;
         } finally {
             ConnectedCond.signalAll();

@@ -58,9 +58,7 @@ public class Client extends Thread {
                         continue;
                     }
                     //セマフォをひとつ減らす
-                    System.out.println("2semA"+Sem.availablePermits());
                     Sem.acquire();
-                    System.out.println("2semG"+Sem.availablePermits());
                     //接続要求の承諾/スレッドの開始
                     Thread ct = new ClientThread(sock, ReqQueue, Sem, LoginInfo);
                     ct.start();

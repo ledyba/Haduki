@@ -1,7 +1,5 @@
 package hadukiclient.serv_connection;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.io.DataOutputStream;
 import java.io.BufferedReader;
 import java.io.DataInputStream;
@@ -9,6 +7,7 @@ import java.io.BufferedWriter;
 import java.net.Socket;
 import java.io.*;
 import hadukiclient.HTTP_SocketStreamReader;
+import hadukiclient.crypt.Crypt;
 
 /**
  * <p>タイトル: 「葉月」</p>
@@ -23,12 +22,6 @@ import hadukiclient.HTTP_SocketStreamReader;
  * @version 1.0
  */
 public class ServerCommunicator {
-    private static final byte[] SERVER_PUBLIC_KEY = {
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    };
     public static final int ACTION_CONNECT = 0x2F5B8D6E;
     public static final int ACTION_ACCEPT = 0xDBFBD3B9;
     public static final int ACTION_KICKED = 0xF8E9A58E;
@@ -57,31 +50,46 @@ public class ServerCommunicator {
         ServerStrForProxy = Server + ":" + Integer.toString(port);
     }
 
-    public boolean prepareKeys() {
-        return LoginInfo.calcKey();
-    }
-
     public boolean sendConnectionStart() {
         Request req = new Request(LoginInfo, ServerCommunicator.ACTION_CONNECT);
-        if (!sendRequest(req)) {
+        if (!sendPost(req)) {
             return false;
         }
         int res_code = req.getResultCode();
-        return res_code == this.ACTION_ACCEPT;
+        if (res_code == this.ACTION_ACCEPT) {
+            return true;
+        } else {
+            LoginInfo.restoreCrypt();
+            return false;
+        }
     }
 
     public boolean sendRequest(Request req) {
-        return sendPost(req);
+        if (!sendPost(req)) {
+            return false;
+        }
+        int res_code = req.getResultCode();
+        if (res_code == this.ACTION_RESULT) {
+            return true;
+        } else {
+            LoginInfo.restoreCrypt();
+            return false;
+        }
     }
 
     public boolean sendConnectionEnd() {
         Request req = new Request(LoginInfo,
                                   ServerCommunicator.ACTION_DISCONNEST);
-        if (!sendRequest(req)) {
+        if (!sendPost(req)) {
             return false;
         }
         int res_code = req.getResultCode();
-        return res_code == this.ACTION_ACCEPT;
+        if (res_code == this.ACTION_ACCEPT) {
+            return true;
+        } else {
+            LoginInfo.restoreCrypt();
+            return false;
+        }
     }
 
     private boolean initStream(Socket sock) {
@@ -106,6 +114,7 @@ public class ServerCommunicator {
 
     byte[] Buffer = new byte[Request.BUFF_SIZE];
     private boolean sendPost(Request req) {
+        LoginInfo.backupCrypt();
         Socket sock = null;
         try {
             boolean is_proxy = !(Proxy == null || Proxy.isBad());
@@ -119,28 +128,29 @@ public class ServerCommunicator {
                 if (!initStream(sock)) {
                     req.setConnected(false);
                     req.signalReceived(false);
+                    LoginInfo.restoreCrypt();
                     return false;
                 }
                 req.setConnected(true);
                 //ヘッダ送信
                 if (is_proxy) {
                     TextOut.write("POST http://" + ServerStrForProxy +
-                                  "/index.cgi HTTP/1.1\n");
-                    TextOut.write("Proxy-Connection: keep-alive\n");
+                                  "/index.cgi HTTP/1.1\r\n");
+                    TextOut.write("Proxy-Connection: close\r\n");
                     if (Proxy.isProxyAuth()) {
                         TextOut.write(Proxy.getProxyAuthHeader());
                     }
-                    TextOut.write("HOST: " + ServerStrForProxy + "\n");
+                    TextOut.write("HOST: " + ServerStrForProxy + "\r\n");
                 } else {
-                    TextOut.write("POST /index.cgi HTTP/1.1\n");
-                    TextOut.write("Connection: keep-alive\n");
-                    TextOut.write("HOST: " + Server + "\n");
+                    TextOut.write("POST /index.cgi HTTP/1.1\r\n");
+                    TextOut.write("Connection: close\r\n");
+                    TextOut.write("HOST: " + Server + "\r\n");
                 }
-                TextOut.write("User-Agent: Haduki\n");
-                TextOut.write("Accept: */*\n");
-                TextOut.write("Content-Type: image/x-png\n"); //バイナリを送れる
-                TextOut.write("Content-Length: " + sending_data.length + "\n"); //バイナリ長さ
-                TextOut.write("\n"); //ヘッダ終わり
+                TextOut.write("User-Agent: Haduki\r\n");
+                TextOut.write("Accept: */*\r\n");
+                TextOut.write("Content-Type: image/x-png\r\n"); //バイナリを送れる
+                TextOut.write("Content-Length: " + sending_data.length + "\r\n"); //バイナリ長さ
+                TextOut.write("\r\n"); //ヘッダ終わり
                 TextOut.flush();
                 //データ送信
                 DataOut.write(sending_data);
@@ -166,6 +176,7 @@ public class ServerCommunicator {
                 req.setConnected(false);
                 is_err = true;
                 ex.printStackTrace();
+                LoginInfo.restoreCrypt();
                 return false;
             } finally {
                 if (is_err) {
@@ -176,14 +187,19 @@ public class ServerCommunicator {
             int size;
             int total_size = 0;
             boolean signal = false;
-            OutputStream req_os = req.getReceivedStream();
+            OutputStream req_os = req.getRecvOutputStream();
+            Crypt Crypt = LoginInfo.getCrypt();
             try {
-                while ((size = DataIn.read(Buffer, 0, Request.BUFF_SIZE)) > 0) {
-                    req_os.write(Buffer, 0, size);
-                    total_size += size;
-                    if (!signal && total_size >= 4) {
-                        req.signalReceived(true);
-                        signal = true;
+                while ((size = Crypt.inputData(DataIn, Buffer, 0,
+                                               Request.BUFF_SIZE)) > 0) {
+                    try {
+                        req_os.write(Buffer, 0, size);
+                        total_size += size;
+                        if (!signal && total_size >= 4) {
+                            req.signalReceived(true);
+                            signal = true;
+                        }
+                    } catch (IOException ex) {
                     }
                 }
                 req_os.flush();
