@@ -5,7 +5,7 @@
 	<entry key="Server">ledyba.ddo.jp</entry>
 	<entry key="ServerPort">44444</entry>
 	<entry key="ProxyServerUsing">true</entry>
-	<entry key="ProxyServer">ledyba.ddo.jp</entry>
-	<entry key="ProxyServerPort">44444</entry>
+	<entry key="ProxyServer">127.0.0.1</entry>
+	<entry key="ProxyServerPort">3128</entry>
 	<entry key="ProxyServerUser">MEDIACENTER\k28username</entry>
 </properties>
