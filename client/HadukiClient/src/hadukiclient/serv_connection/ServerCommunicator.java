@@ -28,6 +28,7 @@ public class ServerCommunicator {
     public static final int ACTION_REQUEST = 0x444581CC;
     public static final int ACTION_RESULT = 0xC3FF7E28;
     public static final int ACTION_DISCONNEST = 0x9097FB4B;
+    public static final int ACTION_RESET = 0xBE0F74BA;
 
     private String Server;
     private int Port;
@@ -59,7 +60,6 @@ public class ServerCommunicator {
         if (res_code == this.ACTION_ACCEPT) {
             return true;
         } else {
-            LoginInfo.restoreCrypt();
             return false;
         }
     }
@@ -72,7 +72,6 @@ public class ServerCommunicator {
         if (res_code == this.ACTION_RESULT) {
             return true;
         } else {
-            LoginInfo.restoreCrypt();
             return false;
         }
     }
@@ -87,7 +86,6 @@ public class ServerCommunicator {
         if (res_code == this.ACTION_ACCEPT) {
             return true;
         } else {
-            LoginInfo.restoreCrypt();
             return false;
         }
     }
@@ -114,11 +112,13 @@ public class ServerCommunicator {
 
     byte[] Buffer = new byte[Request.BUFF_SIZE];
     private boolean sendPost(Request req) {
-        LoginInfo.backupCrypt();
         Socket sock = null;
         try {
+
             boolean is_proxy = !(Proxy == null || Proxy.isBad());
             boolean is_err = false;
+            Crypt Crypt = LoginInfo.getCrypt();
+            Crypt.startCrypt();
             try {
                 //ソケット準備
                 sock = is_proxy ?
@@ -128,7 +128,6 @@ public class ServerCommunicator {
                 if (!initStream(sock)) {
                     req.setConnected(false);
                     req.signalReceived(false);
-                    LoginInfo.restoreCrypt();
                     return false;
                 }
                 req.setConnected(true);
@@ -157,6 +156,7 @@ public class ServerCommunicator {
                 DataOut.flush();
                 /*リターンを受信*/
                 String str = null;
+                char[] str_c;
                 //リクエスト処理
                 int line = 0;
                 do {
@@ -165,18 +165,18 @@ public class ServerCommunicator {
                         is_err = true;
                         break;
                     }
-                    if (line == 0 && !Request.strcmp_end(str, HEADER_200_C)) {
+                    str_c = str.toLowerCase().toCharArray();
+                    if (line == 0 && !Request.strcmp_end(str_c, HEADER_200_C)) {
                         //リクエスト失敗
                         is_err = true;
                         break;
                     }
                     line++;
-                } while (!str.equals(""));
+                } while (!(str_c.length == 0));
             } catch (Exception ex) {
                 req.setConnected(false);
                 is_err = true;
                 ex.printStackTrace();
-                LoginInfo.restoreCrypt();
                 return false;
             } finally {
                 if (is_err) {
@@ -184,22 +184,23 @@ public class ServerCommunicator {
                 }
             }
             /*受信した結果を書き込む*/
-            int size;
+            int size = 0;
             int total_size = 0;
             boolean signal = false;
             OutputStream req_os = req.getRecvOutputStream();
-            Crypt Crypt = LoginInfo.getCrypt();
             try {
                 while ((size = Crypt.inputData(DataIn, Buffer, 0,
                                                Request.BUFF_SIZE)) > 0) {
+                    total_size += size;
                     try {
                         req_os.write(Buffer, 0, size);
-                        total_size += size;
                         if (!signal && total_size >= 4) {
                             req.signalReceived(true);
                             signal = true;
                         }
                     } catch (IOException ex) {
+                        ex.printStackTrace();
+                        return false;
                     }
                 }
                 req_os.flush();
@@ -215,6 +216,9 @@ public class ServerCommunicator {
                     }
                 } catch (IOException ex2) {
                     ex2.printStackTrace();
+                }
+                if(total_size > 0){
+                    Crypt.nextStream();
                 }
             }
         } finally {

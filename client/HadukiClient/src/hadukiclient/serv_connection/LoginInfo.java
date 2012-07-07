@@ -39,11 +39,4 @@ public class LoginInfo{
     public Crypt getCrypt(){
         return Crypt;
     }
-    private Crypt backup;
-    public void backupCrypt(){
-        backup = (Crypt)Crypt.clone();
-    }
-    public void restoreCrypt(){
-        Crypt = (Crypt)backup.clone();
-    }
 }

@@ -25,8 +25,8 @@ public class Request {
     //送信
     private byte[] Data;
     //ストリーム
-    private RequestOutputStream ROS = new RequestOutputStream();
-    private RequestInputStream RIS = new RequestInputStream();
+    private PipedInputStream RIS = new PipedInputStream();
+    private PipedOutputStream ROS = new PipedOutputStream();
     //リザルト
     private int ResultCode = -1;
     //コンストラクタ
@@ -159,10 +159,11 @@ public class Request {
     }
 
     public boolean getConnected() {
+        ConnectedLock.lock();
         if (ConnectedDecided) {
+            ConnectedLock.unlock();
             return Connected;
         }
-        ConnectedLock.lock();
         try {
             ConnectedCond.await();
         } catch (InterruptedException ex) {
@@ -173,29 +174,27 @@ public class Request {
         return Connected;
     }
 
-    public static boolean strcmp_start(final String a, final char[] b) {
-        if (a.length() < b.length) {
+    public static boolean strcmp_start(final char[] a, final char[] b) {
+        if (a.length < b.length) {
             return false;
         }
-        char[] a2 = a.toLowerCase().toCharArray();
         int min = b.length;
         for (int i = 0; i < min; i++) {
-            if (a2[i] != b[i]) {
+            if (a[i] != b[i]) {
                 return false;
             }
         }
         return true;
     }
 
-    public static boolean strcmp_end(final String a, final char[] b) {
-        if (a.length() < b.length) {
+    public static boolean strcmp_end(final char[] a, final char[] b) {
+        if (a.length < b.length) {
             return false;
         }
-        char[] a2 = a.toLowerCase().toCharArray();
-        int a_l = a.length();
+        int a_l = a.length;
         int b_l = b.length;
         for (int i = 1; i <= b_l; i++) {
-            if (a2[a_l - i] != b[b_l - i]) {
+            if (a[a_l - i] != b[b_l - i]) {
                 return false;
             }
         }

@@ -82,11 +82,16 @@ public class ClientThread extends Thread {
             byte[] req_data = null;
             baos = new ByteArrayOutputStream(1024);
             String str;
+            char[] str_c;
             int line = 0;
             int content_length = -1;
+            boolean connection_changed = false;
             do {
                 str = TextIn.readLine();
-                if(str == null)break;
+                if (str == null) {
+                    break;
+                }
+                str_c = str.toLowerCase().toCharArray();
                 if (line == 0) {
                     int start = str.indexOf(HTTP_URL_START);
                     int host_start = start + HTTP_URL_START.length();
@@ -100,21 +105,23 @@ public class ClientThread extends Thread {
                         host = host.substring(0, pt_start);
                     }
                     str = str.substring(0, start) + str.substring(end);
-                } else if (Request.strcmp_start(str, CONTNT_LENGTH_HEADER_C)) {
+                } else if (content_length < 0 &&
+                           Request.strcmp_start(str_c, CONTNT_LENGTH_HEADER_C)) {
                     content_length = Integer.valueOf(str.substring(
                             CONTNT_LENGTH_HEADER.length()));
-                } else if (Request.strcmp_start(str,
+                } else if (!connection_changed && Request.strcmp_start(str_c,
                                                 PROXY_CONNECTION_HEADER_C)) {
                     str = CONNECTION_HEADER;
+                    connection_changed = true;
                 } else if (
-                        Request.strcmp_start(str, KEEP_ALIVE_HEADER_C) ||
-                        Request.strcmp_start(str, CHACHE_HEADER_C)) {
+                        Request.strcmp_start(str_c, KEEP_ALIVE_HEADER_C) ||
+                        Request.strcmp_start(str_c, CHACHE_HEADER_C)) {
                     continue;
                 }
                 baos.write(str.getBytes());
                 baos.write("\r\n".getBytes());
                 line++;
-            } while (!str.equals(""));
+            } while (!(str_c.length == 0));
             //データの受信
             int total_size = 0;
             int size;
@@ -132,35 +139,29 @@ public class ClientThread extends Thread {
                                       host_port, host, req_data);
             ReqQueue.offer(req);
             //結果を返す
-            if (req.getConnected()) {
-                if (req.getReceived()) {
-                    if (req.getResultCode() != ServerCommunicator.ACTION_RESULT){
-                        TextOut.write(
-                                "Kicked."
-                                );
-                        TextOut.flush();
-                    } else {
-                        InputStream res_dis = req.getRecvInputStream();
-                        try{
-                            byte[] data = new byte[Request.BUFF_SIZE];
-                            int in;
-                            while ((in = res_dis.read(data, 0,
-                                    Request.BUFF_SIZE)) >
-                                         0) {
-                                DataOut.write(data, 0, in);
-                            }
-                            DataOut.flush();
-                        } finally {
-                            res_dis.close();
+            if (req.getConnected() && req.getReceived()) {
+                if (req.getResultCode() != ServerCommunicator.ACTION_RESULT) {
+                    TextOut.write("Kicked.");
+                    TextOut.flush();
+                } else {
+                    InputStream res_dis = req.getRecvInputStream();
+                    try {
+                        byte[] data = new byte[Request.BUFF_SIZE];
+                        int in;
+                        while ((in = res_dis.read(data, 0,
+                                                  Request.BUFF_SIZE)) > 0) {
+                            DataOut.write(data, 0, in);
                         }
+                        DataOut.flush();
+                    } finally {
+                        res_dis.close();
                     }
                 }
             }
         } catch (IOException ex) {
             ex.printStackTrace();
-        } finally { //セマフォをかえす
-            Sem.release();
-            try {
+        } finally {
+            try { //ソケットを閉じる
                 TextIn.close();
                 DataIn.close();
                 DataOut.close();
@@ -169,6 +170,8 @@ public class ClientThread extends Thread {
             } catch (IOException ex1) {
                 ex1.printStackTrace();
             }
+            //セマフォを返す
+            Sem.release();
         }
     }
 }

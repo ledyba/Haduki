@@ -13,7 +13,7 @@ package hadukiclient.client;
  * @version 1.0
  */
 public class BasicEncode {
-    private static final byte encode_table[] = {
+    private static final char encode_table[] = {
                                                'A', 'B', 'C', 'D', 'E', 'F',
                                                'G', 'H', 'I', 'J', 'K', 'L',
                                                'M', 'N', 'O', 'P', 'Q', 'R',
@@ -31,20 +31,31 @@ public class BasicEncode {
      * @param str String
      * @return String
      */
+    private static StringBuffer sb = new StringBuffer();
     public static String encode(String str) {
-        final byte[] data = str.getBytes();
-        final int length = data.length;
-        final int end = length - (length % 3);
-        String ret = "";
-        for (int i = 0; i < length; i += 3) {
-            ret += encode_table[data[i] >> 2];
-            ret += encode_table[((data[i] & 3) << 4) + data[i+1] >> 4];
-            ret += encode_table[((data[i+1] & 0xf) << 2) + data[i+2]>>6];
-            ret += encode_table[(data[i+2] & 0x3f)];
+        sb.delete(0, sb.length());
+        final byte[] str_b = str.getBytes();
+        final int div = 3 - (str_b.length % 3);
+        final int length = str_b.length + div;
+        final byte[] data = new byte[length];
+
+        for (int i = 0; i < str_b.length; i++) {
+            data[i] = str_b[i];
         }
-        for (int i = end; i < length; i++) {
-            ret += "=";
+        int tmp;
+        for (int i = 0; i < length - 2; i += 3) {
+            tmp = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
+            sb.append(encode_table[(tmp >> 18) & 0x3f]);
+            sb.append(encode_table[(tmp >> 12) & 0x3f]);
+            sb.append(encode_table[(tmp >> 6) & 0x3f]);
+            sb.append(encode_table[(tmp >> 0) & 0x3f]);
         }
-        return ret;
+        if (div < 3) {
+            sb.delete(sb.length() - div, sb.length());
+            for (int j = 0; j < div; j++) {
+                sb.append('=');
+            }
+        }
+        return sb.toString();
     }
 }
