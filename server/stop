@@ -1,3 +1,5 @@
 #!/bin/sh
 
+echo "Stopping Haduki..."
 kill `cat ./Haduki.pid`
+echo "Haduki stopped."
