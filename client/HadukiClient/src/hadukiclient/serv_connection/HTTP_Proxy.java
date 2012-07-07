@@ -30,7 +30,7 @@ public class HTTP_Proxy {
                 ProxyPort = -1;
                 ex.printStackTrace();
             }
-            if(user != null || pass != null || user.equals("") || pass.equals("")){
+            if(user == null || pass == null || user.equals("") || pass.equals("")){
                 login = null;
             }else{
                 login = BasicEncode.encode(user + ":" + pass);
@@ -55,7 +55,7 @@ public class HTTP_Proxy {
         return login != null;
     }
     public String getProxyAuthHeader(){
-        if(login == null){
+        if(login != null){
             return "Proxy-Authorization: Basic " + login + "\n";
         }else{
             return null;

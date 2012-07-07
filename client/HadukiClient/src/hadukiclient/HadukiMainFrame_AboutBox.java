@@ -33,7 +33,7 @@ public class HadukiMainFrame_AboutBox extends JDialog implements ActionListener 
     BorderLayout borderLayout1 = new BorderLayout();
     FlowLayout flowLayout1 = new FlowLayout();
     String product = "「葉月」";
-    String version = "Version 1.0 (2007/05/03)";
+    String version = "Version 1.0 (2007/05/10)";
     String copyright = "Copyright (C) 2007 PSI";
     String comment1 = "おにいさま、ふるふるふるむーん！";
     String comment2 = "・・・はぁorz";

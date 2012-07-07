@@ -36,14 +36,13 @@ public class BasicEncode {
         sb.delete(0, sb.length());
         final byte[] str_b = str.getBytes();
         final int div = 3 - (str_b.length % 3);
-        final int length = str_b.length + div;
-        final byte[] data = new byte[length];
+        final byte[] data = new byte[str_b.length + div];
 
         for (int i = 0; i < str_b.length; i++) {
             data[i] = str_b[i];
         }
         int tmp;
-        for (int i = 0; i < length - 2; i += 3) {
+        for (int i = 0; i < str_b.length; i += 3) {
             tmp = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
             sb.append(encode_table[(tmp >> 18) & 0x3f]);
             sb.append(encode_table[(tmp >> 12) & 0x3f]);
