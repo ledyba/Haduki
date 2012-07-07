@@ -14,23 +14,27 @@
 	TCPsocket Socket;
 
 /*このファイル内のみで使う関数を宣言*/
-void manager_write_action_code(int pipe,int code,void* data,int size);
+void manager_write_action_code(int pipe,int code,const void* data,int size);
 void manager_init_filter_list();
+void manager_free_filter_list();
 inline int filter_check_ip_addr(const IPaddress* ip);
 inline int ipcmp(const IPaddress* a,const IPaddress* b);
 
 //開放
 void manager_free(){
-	free(FilterList.deny);
-	free(FilterList.allow);
 	SDLNet_FreeSocketSet(SockSet);
 	SDLNet_TCP_Close(WaitSocket);
 	SDLNet_TCP_Close(Socket);
+	free_login();
+	manager_free_filter_list();
 }
 
 //変数の準備
 void manager_init(){
+	//フィルタリスト
 	manager_init_filter_list();
+	//ログインシステムの初期化
+	init_login();
 	//ソケットマネージャ
 	SockSet=SDLNet_AllocSocketSet(1);
 	if(SockSet == NULL){
@@ -61,58 +65,81 @@ void manager_init_filter_list(){
 	int size = 0;
 	IPaddress ip;
 	/*ALLOW*/
-	list_file = fopen(FILTER_ALLOW_LIST_NAME,"r");
+	FilterList.allow_size = 0;
 	FilterList.allow_all = false;
-	while((host = freadLine(list_file)) != null){
-		if(strncmp(host,FILTER_COMMENT,strlen(FILTER_COMMENT)) == 0){
-			continue;
+	list_file = fopen(FILTER_ALLOW_LIST_NAME,"r");
+	if(list_file != null){
+		while((host = freadLine(list_file)) != null){
+			if(strncmp(host,FILTER_COMMENT,strlen(FILTER_COMMENT)) == 0){
+				continue;
+			}
+			if(strncmp(host,FILTER_ALL,strlen(FILTER_ALL)) == 0){
+				free(FilterList.allow);
+				size = 0;
+				FilterList.allow_all = true;
+				break;
+			}
+			if(SDLNet_ResolveHost(&ip,host,PORT) == 0){
+				size++;
+				FilterList.allow = realloc(FilterList.allow,sizeof(ip) * size);
+				memcpy(&FilterList.allow[size-1],&ip,sizeof(ip));
+			}
 		}
-		if(strncmp(host,FILTER_ALL,strlen(FILTER_ALL)) == 0){
-			free(FilterList.allow);
-			size = 0;
-			FilterList.allow_all = true;
-			break;
-		}
-		if(SDLNet_ResolveHost(&ip,host,PORT) == 0){
-			size++;
-			FilterList.allow = realloc(FilterList.allow,sizeof(ip) * size);
-			memcpy(&FilterList.allow[size-1],&ip,sizeof(ip));
-		}
+		FilterList.allow_size = size;
+		fclose(list_file);
 	}
-	FilterList.allow_size = size;
-	fclose(list_file);
 	/*DENY*/
-	list_file = fopen(FILTER_DENY_LIST_NAME,"r");
-	size = 0;
+	FilterList.deny_size = 0;
 	FilterList.deny_all = false;
-	while((host = freadLine(list_file)) != null){
-		if(strncmp(host,FILTER_COMMENT,strlen(FILTER_COMMENT)) == 0){
-			continue;
+	list_file = fopen(FILTER_DENY_LIST_NAME,"r");
+	if(list_file != null){
+		size = 0;
+		while((host = freadLine(list_file)) != null){
+			if(strncmp(host,FILTER_COMMENT,strlen(FILTER_COMMENT)) == 0){
+				continue;
+			}
+			if(strncmp(host,FILTER_ALL,strlen(FILTER_ALL)) == 0){
+				free(FilterList.deny);
+				size = 0;
+				FilterList.deny_all = true;
+				break;
+			}
+			if(SDLNet_ResolveHost(&ip,host,PORT) == 0){
+				size++;
+				FilterList.deny = realloc(FilterList.deny,sizeof(ip) * size);
+				memcpy(&FilterList.deny[size-1],&ip,sizeof(ip));
+			}
 		}
-		if(strncmp(host,FILTER_ALL,strlen(FILTER_ALL)) == 0){
-			free(FilterList.deny);
-			size = 0;
-			FilterList.deny_all = true;
-			break;
-		}
-		if(SDLNet_ResolveHost(&ip,host,PORT) == 0){
-			size++;
-			FilterList.deny = realloc(FilterList.deny,sizeof(ip) * size);
-			memcpy(&FilterList.deny[size-1],&ip,sizeof(ip));
-		}
+		FilterList.deny_size = size;
+		fclose(list_file);
 	}
-	FilterList.deny_size = size;
-	fclose(list_file);
 	//フィルタ初期化完了
 	log_file = lock_log_file();
 	time_output();
-	fprintf(log_file,"Initialized Filtering System\n");
+	fprintf(log_file,"Initialized Filtering System.\n");
 	unlock_log_file();
 }
 
-void manager_write_action_code(int pipe,int code,void* data,int size){
+void manager_free_filter_list(){
+	free(FilterList.deny);
+	free(FilterList.allow);
+}
+
+void manager_write_action_code_all(int code,const void* data,int size){
+	int i;
+	for(i=0;i<THREAD_MAX;i++){
+		CONNECTION_DATA* con = &ConnectionData[i];
+		manager_write_action_code(	con->com_pipe[PIPE_WRITE],
+									code,
+									data,
+									size
+								);
+	}
+}
+
+void manager_write_action_code(int pipe,int code,const void* data,int size){
 	write(pipe,&code,sizeof(code));
-	write(pipe,data,size);
+	if(data != null && size > 0) write(pipe,data,size);
 }
 
 void manager_main(){
@@ -123,7 +150,7 @@ void manager_main(){
 	/*ログに追加*/
 	log_file = lock_log_file();
 	time_output();
-	fprintf(log_file,"Haduki started\n");
+	fprintf(log_file,"Haduki started.\n");
 	unlock_log_file();
 	/*下ごしらえ*/
 	manager_init();
@@ -148,7 +175,7 @@ void manager_main(){
 			if(!is_locked_connection(con)){
 				/*指示*/
 				manager_write_action_code(	con->com_pipe[PIPE_WRITE],
-											MANAGER_ACTION_CONNET,
+											MANAGER_ACTION_CONNECT,
 											&Socket,
 											sizeof(Socket)
 										);

@@ -65,15 +65,19 @@ inline int is_locked_connection(CONNECTION_DATA* con){
 int connection_main(void* data){
 	CONNECTION_DATA* con = (CONNECTION_DATA*)data;
 	int action_code;
+	int running = true;
 	//シグナルの受信
-	while(read(con->com_pipe[PIPE_READ],&action_code,sizeof(action_code))){
+	while(running && read(con->com_pipe[PIPE_READ],&action_code,sizeof(action_code))){
 		switch(action_code){
-			case MANAGER_ACTION_CONNET:
+			case MANAGER_ACTION_CONNECT:
 				read(	con->com_pipe[PIPE_READ],
 						&con->socket,
 						sizeof(con->socket)
 					);
 				connection_connect(con);
+				break;
+			case MANAGER_ACTION_KILL:
+				running = false;
 				break;
 		}
 	}
@@ -156,73 +160,76 @@ void connection_do_request(CONNECTION_DATA* con,int content_length){
 		TCPsocket* c_sock = &con->socket;
 		char* recv;
 		int idx = 0;
-		int recv_size;
+		int size;
+		int total_size = 0;
+		//リクエスト関係
+		char pass[USER_INFO_KEY_SIZE];
+		char* host = NULL;
+		char* data = NULL;
+		Uint32 user_id;
+		Uint32 session_id;
+		Uint32 action_code;
+		Uint32 host_size;
+		Uint16 host_port = 0;
+		Uint32 data_size;
 		//データ受信
 		recv = malloc(content_length);
-		while((recv_size = 
-				recvCrypt(&con->info->crypt,c_sock,&recv[idx], content_length-idx)) > 0){
-			idx += recv_size;
-			if(idx >= content_length){
+		while((size = recvCrypt(&con->info->crypt,c_sock,
+						&recv[total_size],content_length-total_size)) > 0){
+			total_size += size;
+			if(total_size >= content_length){
 				break;
 			}
 		}
 
 		//エラー
-		if(recv_size <= 0){
+		if(total_size <= 0){
+			free(recv);
 			return;
 		}
 		//リクエスト完成
-		idx = 0;
-		{
-			char pass[USER_INFO_KEY_SIZE];
-			char* host = NULL;
-			char* data = NULL;
-			Uint32 user_id = 0;
-			Uint32 session_id = 0;
-			Uint32 action_code = 0;
-			Uint32 host_size = 0;
-			Uint16 host_port = 0;
-			Uint32 data_size = 0;
+		user_id = Utl_readInt(&recv[0]);
+		idx+=4;
 
-			user_id = Utl_readInt(&recv[0]);
-			idx+=4;
+		memcpy(pass,&recv[idx],USER_INFO_KEY_SIZE);
+		idx+=USER_INFO_KEY_SIZE;
 
-			memcpy(pass,&recv[idx],USER_INFO_KEY_SIZE);
-			idx+=USER_INFO_KEY_SIZE;
+		session_id = Utl_readInt(&recv[idx]);
+		idx+=4;
 
-			session_id = Utl_readInt(&recv[idx]);
-			idx+=4;
+		action_code = Utl_readInt(&recv[idx]);
+		idx+=4;
 
-			action_code = Utl_readInt(&recv[idx]);
-			idx+=4;
+		host_size = Utl_readInt(&recv[idx]);
+		idx+=4;
 
-			host_size = Utl_readInt(&recv[idx]);
-			idx+=4;
+		if(host_size > 0 && host_size <= content_length - idx - 4 - 2){
+			host = malloc(host_size+1);
+			memcpy(host,&recv[idx],host_size);
+			host[host_size] = '\0';
+			idx+=host_size;
 
-			if(host_size > 0){
-				host = malloc(host_size+1);
-				memcpy(host,&recv[idx],host_size);
-				host[host_size] = '\0';
-				idx+=host_size;
+			host_port = Utl_readShort(&recv[idx]);
+			idx+=2;
 
-				host_port = Utl_readShort(&recv[idx]);
-				idx+=2;
-
-			}
-
-			data_size = Utl_readInt(&recv[idx]);
-			idx+=4;
-
-			if(data_size > 0){
-				data = malloc(data_size);
-				memcpy(data,&recv[idx],data_size);
-			}
-			init_request(&con->request,user_id,pass,session_id,action_code,
-				host_port,host,data_size,data);
 		}
+
+		data_size = Utl_readInt(&recv[idx]);
+		idx+=4;
+
+		if(data_size > 0 && data_size <= content_length - idx){
+			data = malloc(data_size);
+			memcpy(data,&recv[idx],data_size);
+			idx+=data_size;
+		}
+
+		init_request(&con->request,user_id,pass,session_id,
+						action_code,host_port,host,data_size,data);
 		free(recv);
-		//リクエストの結果で分ける。
-		switch_request(con);
+		if(idx == total_size){//データサイズが合わない。
+			//リクエストの結果で分ける。
+			switch_request(con);
+		}
 		free_request(&con->request);
 }
 /*リクエストの分岐*/
@@ -245,35 +252,99 @@ void switch_request(CONNECTION_DATA* con){
 }
 /*ケース：接続*/
 inline void case_action_connect(CONNECTION_DATA* con){
-	connection_return_req_data_header(con,CONNECTION_ACTION_ACCEPT);
-/*
 	REQUEST* req = &con->request;
-	USER_INFO* info = get_user(req->user_id);
+	FILE* log_file;
+	int user_id = req->user_id;
+	int code;
+	USER_INFO* info = get_user(user_id);
 	if(info == null){//ユーザが見つからない
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"Login: USER NOT FOUND ID:%08x\n",user_id);
+		unlock_log_file();
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		return;
+	}
+	//接続
+	if(!connect_user(info)){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Login: Already connected.\n",info->name);
+		unlock_log_file();
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
 		return;
 	}
 	//ログイン
-	if(!login_user(info,req->pass,req->session_id)){
+	if((code = login_user(info,req->pass,req->session_id,con->ip)) != USER_LOGIN_SUCCESS){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Login Error:%d\n",info->name,code);
+		unlock_log_file();
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		disconnect_user(info);
 		return;
 	}
-	//返す
-*/
+	disconnect_user(info);
+	//成功
+	log_file = lock_log_file();
+	time_output();
+	ip_output(con->ip);
+	fprintf(log_file,"(%s)Login Success\n",info->name);
+	unlock_log_file();
+	connection_return_req_data_header(con,CONNECTION_ACTION_ACCEPT);
 }
 /*ケース：切断*/
 inline void case_action_dis_connect(CONNECTION_DATA* con){
-	connection_return_req_data_header(con,CONNECTION_ACTION_DISCONNECT);
-/**
 	REQUEST* req = &con->request;
+	FILE* log_file;
+	int user_id = req->user_id;
+	int code;
 	USER_INFO* info = get_user(req->user_id);
 	if(info == null){//ユーザが見つからない
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"Logoff: USER NOT FOUND ID:%08x\n",user_id);
+		unlock_log_file();
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		return;
+	}
+	//接続
+	if(!connect_user(info)){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Logoff: Already connected.\n",info->name);
+		unlock_log_file();
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
 		return;
 	}
 	//ログオフ
-	if(!logoff_user(info,req->pass,req->session_id)){
+	if((code = logoff_user(info,req->pass,req->session_id,con->ip)) != USER_LOGOFF_SUCCESS){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Logoff Error:%d\n",info->name,code);
+		unlock_log_file();
+		//KICKED
+		disconnect_user(info);
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
 		return;
 	}
-	//返す
-*/
+	disconnect_user(info);
+	//成功
+	log_file = lock_log_file();
+	time_output();
+	ip_output(con->ip);
+	fprintf(log_file,"(%s)Logoff Success\n",info->name);
+	unlock_log_file();
+	connection_return_req_data_header(con,CONNECTION_ACTION_DISCONNECT);
 }
 
 inline char* connection_get_req_url(const char* str,int max);
@@ -281,15 +352,40 @@ inline char* connection_get_req_url(const char* str,int max);
 inline void case_action_request(CONNECTION_DATA* con){
 	REQUEST* req = &con->request;
 	FILE* log_file;
-	USER_INFO* info = null;
-	//ログインしたか否か、ログイン時とのIPのチェック、パスワードチェックその他
-	if(true){//OK
-	}else{//エラー
-		/*ログに追加*/
+	int code;
+	USER_INFO* info = get_user(req->user_id);
+
+	if(info == null){//ユーザが見つからない
 		log_file = lock_log_file();
 		time_output();
-		fprintf(log_file,"(USER)Not login, but requested.\n");
+		ip_output(con->ip);
+		fprintf(log_file,"Request: USER NOT FOUND ID:%08x\n",req->user_id);
 		unlock_log_file();
+		return;
+	}
+
+	//接続
+	if(!connect_user(info)){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Request: Already connected.\n",info->name);
+		unlock_log_file();
+		//KICKED
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
+		return;
+	}
+
+	//チェック
+	if((code = check_user(info,req->pass,req->session_id,con->ip)) != USER_CHECK_SUCCESS){
+		log_file = lock_log_file();
+		time_output();
+		ip_output(con->ip);
+		fprintf(log_file,"(%s)Request Error:%d\n",info->name,code);
+		unlock_log_file();
+		//KICKED
+		disconnect_user(info);
+		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
 		return;
 	}
 
@@ -311,23 +407,23 @@ inline void case_action_request(CONNECTION_DATA* con){
 		char* request_str = connection_get_req_url(req->data,req->data_size);
 		log_file = lock_log_file();
 		time_output();
-		fprintf(log_file,"(USER)<%s:%d>%s %dbytes\n",req->host,req->host_port,request_str,total_size);
+		fprintf(log_file,"(%s)<%s:%d>%s %dbytes\n",info->name,req->host,req->host_port,request_str,total_size);
 		unlock_log_file();
 		free(request_str);
 		}
-		/*クライアントに返す*/
 	}else{//エラー
 		{
 		char* request_str = connection_get_req_url(req->data,req->data_size);
 		log_file = lock_log_file();
 		time_output();
-		fprintf(log_file,"(USER)<%s:%d>%s ConnectionError\n",req->host,req->host_port,request_str);
+		fprintf(log_file,"(%s)<%s:%d>%s ConnectionError\n",info->name,req->host,req->host_port,request_str);
 		unlock_log_file();
 		free(request_str);
 		}
 		connection_return_req_data_header(con,CONNECTION_ACTION_KICKED);
 	}
 	request_close_connection(req);
+	disconnect_user(info);
 }
 
 inline char* connection_get_req_url(const char* str,int max){

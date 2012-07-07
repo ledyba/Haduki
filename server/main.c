@@ -38,21 +38,26 @@ int init_child_process(){
 		}
 }
 
-/*
+
 //開放
 void main_free(int sig){
-	int i;
+	FILE* log_file;
+	//スレッドに終了シグナルを送る
+	manager_write_action_code_all(MANAGER_ACTION_KILL,null,0);
 	//マネージャのフリー
 	manager_free();
-	//スレッドに終了シグナルを送る
-	for(i=0;i<THREAD_MAX;i++){
-		
-	}
+	//ログを出力
+	log_file = lock_log_file();
+	time_output();
+	fprintf(log_file,"Haduki stopped.\n");
+	unlock_log_file();
+	//ログ関係の開放
 	free_log_file();
 	free_time();
+	//終了
 	exit(EXIT_SUCCESS);
 }
-*/
+
 
 //ログ
 SDL_mutex* log_mutex;
@@ -123,7 +128,7 @@ int main(int argc,char *argv[]){
 	//複数プロセスの起動
 	sigignore( SIGCLD );
 	//処理の設定
-//	signal( SIGTERM , main_free );
+	signal( SIGTERM , main_free );
 	//パイプ初期化
 	for(i=0;i<THREAD_MAX;i++){
 			pipe(com_pipe[i]);

@@ -26,7 +26,9 @@ typedef struct{
 //´Ø¿ô
 void manager_main();
 void manager_free();
+void manager_write_action_code_all(int code,const void* data,int size);
 
-#define MANAGER_ACTION_CONNET 0x12451256
+#define MANAGER_ACTION_CONNECT	0x12451256
+#define MANAGER_ACTION_KILL		0x12568975
 
 #endif /*MANAGER_H_*/
