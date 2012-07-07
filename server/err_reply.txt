@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+Date: Mon, 1 Jan 2007 00:00:00 GMT
+Server: Haduki
+Connection: close
+Content-Type: text/html
+
+<html>
+<header>
+<title>こんにちは世界</title>
+</header>
+<body>
+こんにちは世界
+</body>
+</html>
