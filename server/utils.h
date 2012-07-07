@@ -4,6 +4,7 @@
 #define NEED_SWAP (SDL_BYTEORDER == SDL_LIL_ENDIAN)
 
 char* NetUtl_readLine(TCPsocket* sock);
+int NetUtl_readAll(TCPsocket* sock,char** data);
 inline void NetUtl_sendLine(TCPsocket* sock,const char* str);
 
 inline void NetUtl_sendInt(TCPsocket* sock,Uint32 num);

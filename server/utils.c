@@ -11,11 +11,11 @@
 
 /*一行読み込み*/
 char* NetUtl_readLine(TCPsocket* sock){
-	static char* buff;
+	static char* buff = NULL;
 	char ch;
 	int buff_len = 0,length;
 	//バッファクリア
-	if(buff != NULL)free(buff);
+	free(buff);
 	buff = NULL;
 	//ループ
 	while((length = SDLNet_TCP_Recv(*sock, &ch, 1)) == 1){
@@ -35,6 +35,22 @@ char* NetUtl_readLine(TCPsocket* sock){
 	}
 	return buff;
 }
+int NetUtl_readAll(TCPsocket* sock,char** data){
+	static char* buff = NULL;
+	char ch;
+	int size = 0;
+	//バッファクリア
+	free(buff);
+	buff = NULL;
+	//ループ
+	while(SDLNet_TCP_Recv(*sock, &ch, 1) == 1){
+		buff = realloc(buff,size+1);
+		buff[size] = ch;
+		size++;
+	}
+	data = &buff;
+	return size;
+}
 inline void NetUtl_sendLine(TCPsocket* sock,const char* str){
 	SDLNet_TCP_Send(*sock, str, strlen(str));
 }
@@ -49,7 +65,7 @@ inline int max(int a,int b){
 
 /*送信*/
 inline void NetUtl_sendInt(TCPsocket* sock,Uint32 num){
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap32(num);
 	#endif
 	SDLNet_TCP_Send(*sock,&num,sizeof(num));
@@ -57,14 +73,14 @@ inline void NetUtl_sendInt(TCPsocket* sock,Uint32 num){
 inline Uint32 NetUtl_recvInt(TCPsocket* sock){
 	Uint32 num;
 	SDLNet_TCP_Recv(*sock,&num,sizeof(num));
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap32(num);
 	#endif
 	return num;
 }
 
 inline void NetUtl_sendShort(TCPsocket* sock,Uint16 num){
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap16(num);
 	#endif
 	SDLNet_TCP_Send(*sock,&num,sizeof(num));
@@ -72,7 +88,7 @@ inline void NetUtl_sendShort(TCPsocket* sock,Uint16 num){
 inline Uint16 NetUtl_recvShort(TCPsocket* sock){
 	Uint16 num;
 	SDLNet_TCP_Recv(*sock,&num,sizeof(num));
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap16(num);
 	#endif
 	return num;
@@ -85,13 +101,13 @@ inline Uint32 Utl_readInt(char* data){
 			(data[1] << 16) + 
 			(data[2] <<  8) + 
 			(data[3] <<  0);
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap32(num);
 	#endif
 	return num;
 }
 inline void Utl_writeInt(Uint32 num,char* data){
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap32(num);
 	#endif
 		data[0] = (num & 0xFF000000) >> 24;
@@ -104,13 +120,13 @@ inline Uint16 Utl_readShort(char* data){
 	Uint16 num;
 	num =	(data[0] << 8) + 
 			(data[1] << 0);
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap16(num);
 	#endif
 	return num;
 }
 inline void Utl_writeShort(Uint16 num,char* data){
-	#ifdef NEED_SWAP
+	#if NEED_SWAP
 		num = SDL_Swap16(num);
 	#endif
 		data[0] = (num & 0xFF00) >> 8;

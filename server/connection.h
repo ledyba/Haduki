@@ -12,6 +12,7 @@
 #include "request.h"
 typedef struct CONNECTION_DATA{
 	int connected;
+	USER_INFO* info;
 	SDL_mutex* connected_mutex;
 	int com_pipe[2];
 	IPaddress* ip;

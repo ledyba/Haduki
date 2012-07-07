@@ -10,13 +10,13 @@
 #	 ↓パッケージ名かつ実行ファイル名に書き換える
 PACKAGE	= Haduki
 #	 ↓ソースファイルを書き並べる
-SRCS	= main.c connection.c manager.c utils.c request.c user_info.c encrypt.c
+SRCS	= main.c connection.c manager.c utils.c request.c user_info.c crypt.c
 #	 ↓ヘッダファイルを書き並べる
-HEADS	= main.h connection.h manager.h utils.h request.h user_info.h encrypt.h
+HEADS	= main.h connection.h manager.h utils.h request.h user_info.h crypt.h
 OBJS	= $(SRCS:.c=.o)
 
 #	 ↓パッケージに含めるファイル名を書き並べる
-FILES	= README Makefile $(HEADS) $(SRCS) err_reply.txt
+FILES	= README Makefile $(HEADS) $(SRCS) err_reply.txt stop
 VER	= `date +%Y%m%d`
 
 

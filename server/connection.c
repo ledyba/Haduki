@@ -5,6 +5,7 @@
 #include <unistd.h> 
 #include <signal.h>
 #include "main.h"
+#include "crypt.h"
 #include "user_info.h"
 #include "request.h"
 #include "connection.h"
@@ -12,6 +13,7 @@
 #include "utils.h"
 
 /*このファイル内のみで使う関数を宣言*/
+void connection_return_req_data(CONNECTION_DATA* con,char* data,int size);
 void connection_connect(CONNECTION_DATA* con);
 void connection_send_error(TCPsocket* sock);
 void connection_do_request(CONNECTION_DATA* con,int content_length);
@@ -19,6 +21,7 @@ void switch_request(CONNECTION_DATA* con);
 inline void case_action_request(CONNECTION_DATA* con);
 inline void case_action_connect(CONNECTION_DATA* con);
 inline void case_action_dis_connect(CONNECTION_DATA* con);
+/*初期化*/
 void init_connection(CONNECTION_DATA* con,int pipe[2]){
 	con->connected = false;
 	con->connected_mutex = SDL_CreateMutex();
@@ -57,7 +60,7 @@ inline int is_locked_connection(CONNECTION_DATA* con){
 	SDL_mutexV(con->connected_mutex);
 	return connected;
 }
-
+/*メインの流れ*/
 int connection_main(void* data){
 	CONNECTION_DATA* con = (CONNECTION_DATA*)data;
 	int action_code;
@@ -86,7 +89,7 @@ int connection_main(void* data){
 
 #define UA_LENGTH_HEADER "User-Agent: "
 #define UA_LENGTH_HEADER_F "User-Agent: %s"
-
+/*接続*/
 void connection_connect(CONNECTION_DATA* con){
 	/*変数宣言*/
 	TCPsocket *sock = &con->socket;
@@ -140,7 +143,7 @@ void connection_connect(CONNECTION_DATA* con){
 				if(strncmp(	str,
 							CONTENT_LENGTH_HEADER,
 							strlen(CONTENT_LENGTH_HEADER)
-						)){
+						) == 0){
 					sscanf(str,CONTENT_LENGTH_HEADER_F,&content_length);
 				}
 			}//else if(){}
@@ -156,30 +159,26 @@ void connection_connect(CONNECTION_DATA* con){
 	/*接続終了フラグ*/
 	unlock_connection(con);
 }
-
+/*リクエストを処理するに値する*/
 void connection_do_request(CONNECTION_DATA* con,int content_length){
 		TCPsocket* c_sock = &con->socket;
 		char* recv;
-		int idx = 0;int i;
+		int idx = 0;
 		int recv_size;
 		//データ受信
 		recv = malloc(content_length);
-		while(
-				(recv_size = SDLNet_TCP_Recv(*c_sock,&recv[idx], content_length-idx)) > 0 
-			&&	idx < content_length
-			){
+		while((recv_size = 
+				recvCrypt(&con->info->crypt,c_sock,&recv[idx], content_length-idx)) > 0){
 			idx += recv_size;
+			if(idx >= content_length){
+				break;
+			}
 		}
+
 		//エラー
 		if(recv_size <= 0){
 			return;
 		}
-		//復号化・チェックサムとか
-		/*テスト*/
-		for(i=0;i<content_length;i++){
-			recv[i] ^= 45;
-		}
-		/*テスト終わり*/
 		//リクエスト完成
 		idx = 0;
 		{
@@ -209,7 +208,6 @@ void connection_do_request(CONNECTION_DATA* con,int content_length){
 			idx+=sizeof(host_size);
 
 			if(host_size > 0){
-
 				host = malloc(host_size);
 				memcpy(host,&recv[idx],host_size);
 				idx+=host_size;
@@ -226,14 +224,14 @@ void connection_do_request(CONNECTION_DATA* con,int content_length){
 				data = malloc(data_size);
 				memcpy(data,&recv[idx],data_size);
 			}
-
 			init_request(&con->request,user_id,pass,session_id,action_code,
 				host_port,host,data_size,data);
 		}
 		free(recv);
+		//リクエストの結果で分ける。
 		switch_request(con);
 }
-
+/*リクエストの分岐*/
 void switch_request(CONNECTION_DATA* con){
 	REQUEST* req = &con->request;
 	switch(request_get_action_code(req)){
@@ -251,19 +249,39 @@ void switch_request(CONNECTION_DATA* con){
 	}
 	free_request(req);
 }
-
+/*ケース：接続*/
 inline void case_action_connect(CONNECTION_DATA* con){
+	REQUEST* req = &con->request;
+	USER_INFO* info = get_user(req->user_id);
+	if(info == null){//ユーザが見つからない
+		return;
+	}
 	//ログイン
+	if(!login_user(info,req->pass,req->session_id)){
+		return;
+	}
 	//返す
 }
+/*ケース：切断*/
 inline void case_action_dis_connect(CONNECTION_DATA* con){
+	REQUEST* req = &con->request;
+	USER_INFO* info = get_user(req->user_id);
+	if(info == null){//ユーザが見つからない
+		return;
+	}
+	//ログオフ
+	if(!logoff_user(info,req->pass,req->session_id)){
+		return;
+	}
+	//返す
 }
+/*ケース：HTTPリクエストの処理*/
 inline void case_action_request(CONNECTION_DATA* con){
 	REQUEST* req = &con->request;
-	TCPsocket* c_sock = &con->socket;
 	FILE* log_file;
 	USER_INFO* info = null;
 	//IDのチェック
+	//TODO:
 	if(true){//OK
 		log_file = lock_log_file();
 		fprintf(log_file,"USER:%s REQ:%s:%d/%s\n",info->name,req->host,req->host_port,req->data);
@@ -277,8 +295,10 @@ inline void case_action_request(CONNECTION_DATA* con){
 	}
 	//送信
 	if(connect_request(req) && send_request(req)){
-		//データ受信・暗号化・クライアントへ送信
 		TCPsocket* s_sock = request_get_sock(req);
+		char* data;
+		int size = NetUtl_readAll(s_sock,&data);
+		connection_return_req_data(con,data,size);//クライアントに返す
 	}
 	request_close_connection(req);
 }
@@ -305,4 +325,20 @@ void connection_send_error(TCPsocket* sock){
 
 void connection_free(CONNECTION_DATA* con){
 	//SDLNet_TCP_Close(connection_data->socket);
+}
+/*結果を返すための出力用*/
+void connection_return_req_data(CONNECTION_DATA* con,char* data,int size){
+	static char content_length_header[1024];
+	TCPsocket* sock = &con->socket;
+	//ヘッダ
+	NetUtl_sendLine(sock,"HTTP/1.1 200 OK");
+	NetUtl_sendLine(sock,"Date: Thu, 26 Apr 2007 09:04:24 GMT");
+	NetUtl_sendLine(sock,"Server: Haduki");
+	NetUtl_sendLine(sock,"Connection: close");
+	NetUtl_sendLine(sock,"Content-Type: image/x-png");
+	sprintf(content_length_header,"Content-Length: %d",size);
+	NetUtl_sendLine(sock,content_length_header);
+	//データ送信
+	NetUtl_sendLine(sock,"\n");
+	sendCrypt(&con->info->crypt,sock,data,size);
 }
