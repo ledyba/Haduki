@@ -2,7 +2,8 @@ package hadukiclient.serv_connection;
 
 import java.net.*;
 import java.io.*;
-import hadukiclient.client.BasicEncode;
+import org.apache.commons.httpclient.*;
+import org.apache.commons.httpclient.auth.*;
 
 /**
  * <p>タイトル: 「葉月」</p>
@@ -17,68 +18,77 @@ import hadukiclient.client.BasicEncode;
  * @version 1.0
  */
 public class HTTP_Proxy {
-    private InetAddress Proxy;
-    private boolean login = false;
-    private int ProxyPort;
-    private String Proxy_Auth_Header;
-    public HTTP_Proxy(String proxy, int proxy_port, String user, String pass) {
-        if (proxy != null && proxy_port >= 0 && proxy_port <= 0xffff) {
-            try {
-                Proxy = InetAddress.getByName(proxy);
-                ProxyPort = proxy_port;
-            } catch (UnknownHostException ex) {
-                Proxy = null;
-                ProxyPort = -1;
-                ex.printStackTrace();
-            }
+    private Credentials Cred;
+    private String Host;
+    private int Port;
+    public HTTP_Proxy(final String proxy, int proxy_port, final String user,
+                      final String pass) {
+        if (proxy != null && !proxy.equals("") && proxy_port >= 0 &&
+            proxy_port <= 0xffff) { //プロキシ必要
+            Host = proxy;
+            Port = proxy_port;
             //プロキシ認証必要？
             if (user == null || pass == null || user.equals("") ||
                 pass.equals("")) {
-                login = false;
+                Cred = null;
             } else {
-                login = true;
-                Proxy_Auth_Header = "Proxy-Authorization: Basic " +
-                                    BasicEncode.encode(user + ":" + pass)+"\r\n";
+                int idx = user.indexOf("\\");
+                if (idx >= 0) { //NTLM
+                    String localhost = "";
+                    //ローカルホスト取得
+                    try {
+                        localhost = InetAddress.getLocalHost().getHostName();
+                    } catch (UnknownHostException ex) {
+                        ex.printStackTrace();
+                    }
+                    //NTLMの書き換え。
+                    AuthPolicy.unregisterAuthScheme(AuthPolicy.NTLM);
+                    AuthPolicy.registerAuthScheme(AuthPolicy.NTLM,
+                                                  OriginalNTLMScheme.class);
+                    //Cred
+                    Cred = new NTCredentials(user.substring(idx + 1), pass,
+                                             localhost, user.substring(0, idx));
+                } else { //普通
+                    Cred = new UsernamePasswordCredentials(user, pass);
+                }
+
             }
         } else {
-            Proxy = null;
-            ProxyPort = -1;
+            Port = -1;
         }
     }
 
-    public boolean isBad() {
-        return Proxy == null || ProxyPort < 0;
-    }
+    public void setConfig(HttpClient client) {
+        if (Port >= 0) {
+            HostConfiguration hostConfig = new HostConfiguration();
+            hostConfig.setProxy(Host, Port);
+            client.setHostConfiguration(hostConfig);
+            if (Cred != null) { //登録
+                client.getState().setProxyCredentials(
+                        new AuthScope(Host, Port, null, AuthScope.ANY_SCHEME),
+                        Cred
+                        );
+                OriginalNTLMScheme sh = new OriginalNTLMScheme();
+                try {
+                    sh.processChallenge("NTLM");
+                    System.out.println(sh.authenticate(Cred, null));
+                    sh.processChallenge("NTLM TlRMTVNTUAACAAAACwALADgAAAAGAoECw3qCm6QhatAAAAAAAAAAAIQAhABDAAAABQCTCAAAAA9NRURJQUNFTlRFUgIAFgBNAEUARABJAEEAQwBFAE4AVABFAFIAAQAKAFMAVABTAFIAVgAEACIAbQBlAGQAaQBhAGMAZQBuAHQAZQByAC4AbABvAGMAYQBsAAMALgBzAHQAcwByAHYALgBtAGUAZABpAGEAYwBlAG4AdABlAHIALgBsAG8AYwBhAGwAAAAAAA==");
+                    System.out.println(sh.authenticate(Cred, null));
+                } catch (AuthenticationException ex) {
+                    ex.printStackTrace();
+                } catch (MalformedChallengeException ex) {
+                    ex.printStackTrace();
+                }
 
-    public InetAddress getProxy() {
-        return Proxy;
-    }
-
-    public int getProxyPort() {
-        return ProxyPort;
-    }
-
-    public boolean isProxyAuth() {
-        return login;
-    }
-
-    public String getProxyAuthHeader() {
-        if (login) {
-            return Proxy_Auth_Header;
-        } else {
-            return null;
+            }
         }
     }
 
-    public Socket getSocket() {
-        Socket sock = null;
-        try {
-            sock = new Socket(getProxy(), getProxyPort());
-        } catch (UnknownHostException ex) {
-            ex.printStackTrace();
-        } catch (IOException ex) {
-            ex.printStackTrace();
-        }
-        return sock;
+    public boolean isCollect() {
+        return Port >= 0;
+    }
+
+    public boolean isAuth() {
+        return Cred != null;
     }
 }

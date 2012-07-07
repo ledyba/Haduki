@@ -25,7 +25,7 @@ public class Request {
     //送信
     private byte[] Data;
     //ストリーム
-    private PipedInputStream RIS = new PipedInputStream();
+    private PipedInputStream RIS = new PipedInputStream(8192);//大きめに。
     private PipedOutputStream ROS = new PipedOutputStream();
     //リザルト
     private int ResultCode = -1;
@@ -195,5 +195,12 @@ public class Request {
             }
         }
         return true;
+    }
+    private boolean Canceled = false;
+    public synchronized void cancel(){
+        Canceled = true;
+    }
+    public boolean isCanceled(){
+        return Canceled;
     }
 }

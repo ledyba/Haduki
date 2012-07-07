@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.LinkedList;
 import java.util.AbstractQueue;
 import java.util.Iterator;
-import java.util.NoSuchElementException;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -35,9 +34,7 @@ public class RequestQueue extends AbstractQueue<Request> {
     }
 
     public int size() {
-        synchronized (ReqList) {
-            return ReqList.size();
-        }
+        return ReqList.size();
     }
 
     public boolean equals(Object o) {
@@ -70,15 +67,18 @@ public class RequestQueue extends AbstractQueue<Request> {
         try {
             if (this.size() <= 0) {
                 Cond.await();
-                if (!Offered && must_offered) change_wait(true);
             }
         } catch (InterruptedException ex) {
             ex.printStackTrace();
         } finally {
             Lock.unlock();
         }
+        if (!Offered && must_offered) {
+            change_wait(true);
+        }
         return Offered;
     }
+
     private boolean Offered = false;
     public void change_signal(boolean offered) {
         Offered = offered;

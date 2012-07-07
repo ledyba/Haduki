@@ -1,13 +1,14 @@
 package hadukiclient.serv_connection;
 
 import java.io.DataOutputStream;
-import java.io.BufferedReader;
 import java.io.DataInputStream;
-import java.io.BufferedWriter;
-import java.net.Socket;
 import java.io.*;
-import hadukiclient.HTTP_SocketStreamReader;
 import hadukiclient.crypt.Crypt;
+import org.apache.commons.httpclient.*;
+import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.commons.httpclient.methods.ByteArrayRequestEntity;
+import org.apache.commons.httpclient.methods.GetMethod;
+
 
 /**
  * <p>タイトル: 「葉月」</p>
@@ -29,26 +30,24 @@ public class ServerCommunicator {
     public static final int ACTION_RESULT = 0xC3FF7E28;
     public static final int ACTION_DISCONNEST = 0x9097FB4B;
     public static final int ACTION_RESET = 0xBE0F74BA;
-
-    private String Server;
-    private int Port;
     private String ServerForHost;
     private LoginInfo LoginInfo;
     //ソケット
-    private HTTP_Proxy Proxy;
+    private HttpClient Client;
+    //private boolean isProxy = false;
+    private HTTP_Proxy Proxy = null;
     //データ専用　どちらもビッグエンディアンなので楽。
     private DataInputStream DataIn;
-    private DataOutputStream DataOut;
-    //テキスト専用
-    private BufferedReader TextIn;
-    private BufferedWriter TextOut;
     public ServerCommunicator(String server, int port, HTTP_Proxy proxy,
                               LoginInfo info) {
-        Server = server;
-        Proxy = proxy;
         LoginInfo = info;
-        Port = port;
-        ServerForHost = Server + ":" + Integer.toString(port);
+        ServerForHost = server + ":" + Integer.toString(port);
+        Client = new HttpClient();
+        if (proxy != null && proxy.isCollect()) {
+            Proxy = proxy;
+            Proxy.setConfig(Client);
+            //isProxy = true;
+        }
     }
 
     public boolean sendConnectionStart() {
@@ -90,117 +89,75 @@ public class ServerCommunicator {
         }
     }
 
-    private boolean initStream(Socket sock) {
+    private boolean initInputStream(PostMethod method) {
+        InputStream is = null;
         try {
-            InputStream is = sock.getInputStream();
-            OutputStream os = sock.getOutputStream();
+            is = method.getResponseBodyAsStream();
             DataIn = new DataInputStream(is);
-            DataOut = new DataOutputStream(os);
-            TextIn = new BufferedReader(new InputStreamReader(
-                    new HTTP_SocketStreamReader(is)));
-            TextOut = new BufferedWriter(new OutputStreamWriter(os));
         } catch (IOException ex) {
+            try{
+                is.close();
+                DataIn.close();
+            }catch (IOException ex1) {
+                ex1.printStackTrace();
+            }
             ex.printStackTrace();
             return false;
         }
         return true;
     }
 
-    private static final String HEADER_200 = "200 OK";
-    private static final char[] HEADER_200_C = HEADER_200.toLowerCase().
-                                               toCharArray();
-
     byte[] Buffer = new byte[Request.BUFF_SIZE];
     private boolean sendPost(Request req) {
-        Socket sock = null;
+        byte[] sending_data = null;
+        Crypt Crypt = null;
+        int status;
+        //メソッドの設定
+        PostMethod method = new PostMethod("http://" + ServerForHost +
+                                           "/index.cgi");
+        method.setRequestHeader("User-Agent", "Haduki");
+        method.setRequestHeader("Connection", "close");
+        //暗号化の設定
+        Crypt = LoginInfo.getCrypt();
+        Crypt.startCrypt();
+        //送信データの設定
+        sending_data = req.getSendingData();
+        method.setRequestEntity(
+                new ByteArrayRequestEntity(sending_data, "image/x-png"));
         try {
-
-            boolean is_proxy = !(Proxy == null || Proxy.isBad());
-            boolean is_err = false;
-            Crypt Crypt = LoginInfo.getCrypt();
-            Crypt.startCrypt();
             try {
-                //ソケット準備
-                sock = is_proxy ?
-                       Proxy.getSocket() :
-                       new Socket(Server, Port);
-                byte[] sending_data = req.getSendingData();
-                if (!initStream(sock)) {
-                    req.setConnected(false);
-                    req.signalReceived(false);
-                    return false;
-                }
-                req.setConnected(true);
-                //ヘッダ送信
-                if (is_proxy) {
-                    TextOut.write("POST http://" + ServerForHost +
-                                  "/index.cgi HTTP/1.1\r\n");
-                    TextOut.write("Proxy-Connection: close\r\n");
-                    if (Proxy.isProxyAuth()) {
-                        TextOut.write(Proxy.getProxyAuthHeader());
-                    }
-                } else {
-                    TextOut.write("POST /index.cgi HTTP/1.1\r\n");
-                    TextOut.write("Connection: close\r\n");
-                }
-                TextOut.write("HOST: " + ServerForHost + "\r\n");
-                TextOut.write("User-Agent: Haduki\r\n");
-                TextOut.write("Accept: */*\r\n");
-                TextOut.write("Content-Type: image/x-png\r\n"); //バイナリを送れる
-                TextOut.write("Content-Length: " + sending_data.length + "\r\n"); //バイナリ長さ
-                TextOut.write("\r\n"); //ヘッダ終わり
-                TextOut.flush();
-                //データ送信
-                DataOut.write(sending_data);
-                DataOut.flush();
-                /*リターンを受信*/
-                String str = null;
-                char[] str_c;
-                //リクエスト処理
-                int line = 0;
-                do {
-                    str = TextIn.readLine();
-                    if (str == null) {
-                        is_err = true;
-                        break;
-                    }
-                    str_c = str.toLowerCase().toCharArray();
-                    //デバッグ
-                    System.out.println(str);
-                    /*
-                    if (line == 0 && !Request.strcmp_end(str_c, HEADER_200_C)) {
-                        //リクエスト失敗
-                        is_err = true;
-                        break;
-                    }
-*/
-                    line++;
-                } while (!(str_c.length == 0));
-            } catch (Exception ex) {
+                //メソッド実行
+                status = Client.executeMethod(method);
+            } catch (IOException ex2) {
+                ex2.printStackTrace();
                 req.setConnected(false);
-                is_err = true;
-                ex.printStackTrace();
+                req.signalReceived(false);
                 return false;
-            } finally {
-                if (is_err) {
-                    req.signalReceived(false);
-                }
             }
-            /*受信した結果を書き込む*/
+            //接続は、出来た。
+            req.setConnected(true);
+            //結果を取得
+            if (status != HttpStatus.SC_OK) {
+                req.signalReceived(false);
+                return false;
+            }
+            //出力ストリーム初期化
+            if (!initInputStream(method)) {
+                req.signalReceived(false);
+                return false;
+            }
+            //データを取得する
             int size = 0;
             int total_size = 0;
             boolean signal = false;
             OutputStream req_os = req.getRecvOutputStream();
             try {
-                //デバッグ
-                while ((size = DataIn.read( Buffer, 0,
-                                               Request.BUFF_SIZE)) > 0) {
-                System.out.println(new String(Buffer,0,size));
-                /*
                 while ((size = Crypt.inputData(DataIn, Buffer, 0,
                                                Request.BUFF_SIZE)) > 0) {
-                */
                     total_size += size;
+                    if(req.isCanceled()){
+                        return false;
+                    }
                     try {
                         req_os.write(Buffer, 0, size);
                         if (!signal && total_size >= 4) {
@@ -211,41 +168,29 @@ public class ServerCommunicator {
                         ex.printStackTrace();
                         return false;
                     }
+                    req_os.flush();
                 }
-                req_os.flush();
             } catch (IOException ex) {
                 ex.printStackTrace();
             } finally {
                 if (!signal) {
                     req.signalReceived(false);
                 }
-                try {
-                    if (req_os != null) {
-                        req_os.close();
-                    }
-                } catch (IOException ex2) {
-                    ex2.printStackTrace();
-                }
                 if (total_size > 0) {
                     Crypt.nextStream();
                 }
-            }
-        } finally {
-            try {
-                TextIn.close();
-                DataIn.close();
-                DataOut.close();
-                TextOut.close();
-                if (sock != null) {
-                    sock.close();
-                    sock = null;
+                try {
+                    req_os.close();
+                    DataIn.close();
+                } catch (IOException ex1) {
+                    ex1.printStackTrace();
+                    return false;
                 }
-            } catch (IOException ex1) {
-                ex1.printStackTrace();
-                return false;
             }
+            //もどる
+            return true;
+        } finally {
+            method.releaseConnection();
         }
-        //もどる
-        return true;
     }
 }

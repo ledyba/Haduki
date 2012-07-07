@@ -133,6 +133,7 @@ public class ClientThread extends Thread {
             baos.flush();
             req_data = baos.toByteArray();
             baos.close();
+            ClientSocket.shutdownInput();
             //óvãÅÇÃí«â¡
             Request req = new Request(LoginInfo,
                                       ServerCommunicator.ACTION_REQUEST,
@@ -154,7 +155,9 @@ public class ClientThread extends Thread {
                         }
                         DataOut.flush();
                     } finally {
+                        req.cancel();
                         res_dis.close();
+                        ClientSocket.shutdownOutput();
                     }
                 }
             }

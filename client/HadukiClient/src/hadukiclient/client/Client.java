@@ -57,6 +57,8 @@ public class Client extends Thread {
                         sock.close();
                         continue;
                     }
+                    //タイムアウトその他の設定
+                    sock.setTcpNoDelay(true);
                     //セマフォをひとつ減らす
                     Sem.acquire();
                     //接続要求の承諾/スレッドの開始

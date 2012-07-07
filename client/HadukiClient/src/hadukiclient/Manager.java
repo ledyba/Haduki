@@ -5,7 +5,6 @@ import hadukiclient.client.Client;
 import hadukiclient.serv_connection.RequestQueue;
 import hadukiclient.serv_connection.LoginInfo;
 import hadukiclient.serv_connection.HTTP_Proxy;
-import hadukiclient.client.ClientThread;
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.*;
@@ -40,10 +39,6 @@ public class Manager extends Thread {
                    String server, int port) {
         Sup = sup;
         Server = server;
-        if(sup == null || server == null){
-            SuccessInitializing = false;
-            return;
-        }
         Port = port;
         if(port < 0 || port > 0xffff){
             SuccessInitializing = false;
@@ -80,7 +75,7 @@ public class Manager extends Thread {
             return;
         }
         Proxy = new HTTP_Proxy(proxy, proxy_port, proxy_user, proxy_pass);
-        if(Proxy.isBad()){
+        if(!Proxy.isCollect()){//ProxyÇ™NULLÇ»ÇÁÉGÉâÅ[Ç≈Ç∑ÇÊ
             SuccessInitializing = false;
             return;
         }
