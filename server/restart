@@ -1,0 +1,4 @@
+#!/bin/sh
+./stop
+sleep 1
+./Haduki

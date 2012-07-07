@@ -11,7 +11,7 @@ void sendCrypt(CRYPT* cry,TCPsocket* sock,char* data,int size){
 	int i;
 	//テスト
 	for(i=0;i<size;i++){
-		data[i] ^= 45;
+		//data[i] ^= 45;
 	}
 	//テスト終わり
 	SDLNet_TCP_Send(*sock,data,size);
@@ -21,7 +21,7 @@ int recvCrypt(CRYPT* cry,TCPsocket* sock,char* data,int size){
 	int i;
 	//テスト
 	for(i=0;i<ret;i++){
-		data[i] ^= 45;
+		//data[i] ^= 45;
 	}
 	//テスト終わり
 	return ret;

@@ -102,6 +102,17 @@ void time_output(){
 	now_time->tm_sec
 	);
 }
+void ip_output(const IPaddress* ip){
+	int ip_addr = Utl_readInt((char*)&ip->host);
+	int port = ip->port;
+	fprintf(log_file,"<%d.%d.%d.%d:%d>",
+		(ip_addr & 0xff000000) >> 24,
+		(ip_addr & 0x00ff0000) >> 16,
+		(ip_addr & 0x0000ff00) >>  8,
+		(ip_addr & 0x000000ff) >>  0,
+		port
+	);
+}
 
 int main(int argc,char *argv[]){
 	FILE* pid_file = fopen("Haduki.pid","w");

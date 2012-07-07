@@ -18,5 +18,7 @@ FILE* lock_log_file();
 void unlock_log_file();
 //ŽžŠÔ
 void time_output();
+//IP
+void ip_output(const IPaddress* ip);
 
 #endif /*MAIN_H_*/

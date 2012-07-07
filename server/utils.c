@@ -11,6 +11,7 @@
 
 /*一行読み込み*/
 char* NetUtl_readLine(TCPsocket* sock){
+	//マルチスレッディングだとバグが出そうなんですが
 	static char* buff = NULL;
 	char ch;
 	int buff_len = 0,length;
@@ -29,13 +30,19 @@ char* NetUtl_readLine(TCPsocket* sock){
 		buff_len++;
 	}
 	//エラー
-	if(length < 0){
-		if(buff != NULL)free(buff);
-		buff = NULL;
+	if(length <= 0){
+		if(buff_len <= 0){
+			free(buff);
+			buff = NULL;
+		}else{
+			buff = realloc(buff,buff_len+1);
+			buff[buff_len]='\0';
+		}
 	}
 	return buff;
 }
 int NetUtl_readAll(TCPsocket* sock,char** data){
+	//マルチスレッディングだとバグが出そうなんですが
 	static char* buff = NULL;
 	char ch;
 	int size = 0;
@@ -48,11 +55,45 @@ int NetUtl_readAll(TCPsocket* sock,char** data){
 		buff[size] = ch;
 		size++;
 	}
-	data = &buff;
+	*data = buff;
 	return size;
 }
 inline void NetUtl_sendLine(TCPsocket* sock,const char* str){
 	SDLNet_TCP_Send(*sock, str, strlen(str));
+}
+
+/*ファイルを一行読み込み*/
+char* freadLine(FILE* file){
+	//マルチスレッディングだとバグが出そうなんですが
+	static char* buff = NULL;
+	char ch;
+	int buff_len = 0,length;
+	//ファイルがすでに閉じているならばNULL
+	if(file == NULL || feof(file) != 0)return NULL;
+	//バッファクリア
+	free(buff);
+	buff = NULL;
+	//ループ
+	while((length = fread(&ch,1,1,file)) == 1){
+		if(ch == '\r')continue;
+		buff = realloc(buff,buff_len+1);
+		if(ch == '\n' || ch == (char)(EOF)){
+			buff[buff_len] = '\0';
+			break;
+		}
+		buff[buff_len] = ch;
+		buff_len++;
+	}
+	if(length < 1){
+		if(buff_len <= 0){
+			free(buff);
+			buff = NULL;
+		}else{
+			buff = realloc(buff,buff_len+1);
+			buff[buff_len]='\0';
+		}
+	}
+	return buff;
 }
 
 inline int min(int a,int b){

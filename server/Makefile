@@ -16,7 +16,7 @@ HEADS	= main.h connection.h manager.h utils.h request.h user_info.h crypt.h
 OBJS	= $(SRCS:.c=.o)
 
 #	 ↓パッケージに含めるファイル名を書き並べる
-FILES	= README Makefile $(HEADS) $(SRCS) err_reply.txt stop
+FILES	= README Makefile $(HEADS) $(SRCS) err_reply.txt restart stop deny.txt allow.txt
 VER	= `date +%Y%m%d`
 
 

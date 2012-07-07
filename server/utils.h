@@ -7,6 +7,8 @@ char* NetUtl_readLine(TCPsocket* sock);
 int NetUtl_readAll(TCPsocket* sock,char** data);
 inline void NetUtl_sendLine(TCPsocket* sock,const char* str);
 
+char* freadLine(FILE* file);
+
 inline void NetUtl_sendInt(TCPsocket* sock,Uint32 num);
 inline Uint32 NetUtl_recvInt(TCPsocket* sock);
 
@@ -21,4 +23,5 @@ inline void Utl_writeInt(Uint32 num,char* data);
 
 inline Uint16 Utl_readShort(char* data);
 inline void Utl_writeShort(Uint16 num,char* data);
+
 #endif /*NET_UTILS_H_*/

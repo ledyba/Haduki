@@ -31,6 +31,7 @@ int connect_request(REQUEST* req){
 	    printf("connect_request: %s\n", SDLNet_GetError());
 	    return false;
 	}
+
 	req->sock = SDLNet_TCP_Open(&req->ip);
 	if(!(req->sock)){
 		printf("connect_request: %s\n", SDLNet_GetError());

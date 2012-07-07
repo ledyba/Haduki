@@ -9,13 +9,16 @@
 
 inline int login_pass_cmp(const USER_INFO* info,const char pass[USER_INFO_KEY_SIZE]);
 void init_login(){
-
+/*
+	int i;
+	for(i=0;i<){
+	}
+*/
 }
 void init_login_user(USER_INFO* info,Uint32 user_id,char pass[USER_INFO_KEY_SIZE],const char* name){
 	info->user_id = user_id;
 	memcpy(info->pass,pass,USER_INFO_KEY_SIZE);
 	info->name = name;
-	info->mutex = SDL_CreateMutex();
 }
 void free_login_user(USER_INFO* info){
 	SDL_DestroyMutex(info->mutex);
