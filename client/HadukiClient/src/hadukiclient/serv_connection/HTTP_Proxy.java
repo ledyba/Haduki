@@ -18,9 +18,10 @@ import hadukiclient.client.BasicEncode;
  */
 public class HTTP_Proxy {
     private InetAddress Proxy;
+    private boolean login = false;
     private int ProxyPort;
-    private String login;
-    public HTTP_Proxy(String proxy,int proxy_port,String user,String pass) {
+    private String Proxy_Auth_Header;
+    public HTTP_Proxy(String proxy, int proxy_port, String user, String pass) {
         if (proxy != null && proxy_port >= 0 && proxy_port <= 0xffff) {
             try {
                 Proxy = InetAddress.getByName(proxy);
@@ -30,17 +31,22 @@ public class HTTP_Proxy {
                 ProxyPort = -1;
                 ex.printStackTrace();
             }
-            if(user == null || pass == null || user.equals("") || pass.equals("")){
-                login = null;
-            }else{
-                login = BasicEncode.encode(user + ":" + pass);
+            //プロキシ認証必要？
+            if (user == null || pass == null || user.equals("") ||
+                pass.equals("")) {
+                login = false;
+            } else {
+                login = true;
+                Proxy_Auth_Header = "Proxy-Authorization: Basic " +
+                                    BasicEncode.encode(user + ":" + pass)+"\r\n";
             }
         } else {
             Proxy = null;
             ProxyPort = -1;
         }
     }
-    public boolean isBad(){
+
+    public boolean isBad() {
         return Proxy == null || ProxyPort < 0;
     }
 
@@ -51,17 +57,20 @@ public class HTTP_Proxy {
     public int getProxyPort() {
         return ProxyPort;
     }
-    public boolean isProxyAuth(){
-        return login != null;
+
+    public boolean isProxyAuth() {
+        return login;
     }
-    public String getProxyAuthHeader(){
-        if(login != null){
-            return "Proxy-Authorization: Basic " + login + "\n";
-        }else{
+
+    public String getProxyAuthHeader() {
+        if (login) {
+            return Proxy_Auth_Header;
+        } else {
             return null;
         }
     }
-    public Socket getSocket(){
+
+    public Socket getSocket() {
         Socket sock = null;
         try {
             sock = new Socket(getProxy(), getProxyPort());

@@ -87,10 +87,11 @@ public class ServerThread extends Thread {
         Running = false;
     }
     public void waitDisconnection(){
-        if(Disconnected)return;
         ConnectedLock.lock();
         try {
-            DisconnectedCond.await();
+            if(!Disconnected){
+                DisconnectedCond.await();
+            }
         } catch (InterruptedException ex) {
             ex.printStackTrace();
         } finally {
@@ -98,10 +99,11 @@ public class ServerThread extends Thread {
         }
     }
     public int isConnectedWithCond() {
-        if(Connected != 0)return Connected;
         ConnectedLock.lock();
         try {
-            ConnectedCond.await();
+            if(Connected == 0){
+                ConnectedCond.await();
+            }
         } catch (InterruptedException ex) {
             ex.printStackTrace();
         } finally {

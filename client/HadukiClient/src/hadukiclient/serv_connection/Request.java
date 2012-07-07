@@ -132,12 +132,10 @@ public class Request {
 
     public boolean getReceived() {
         ReceivedLock.lock();
-        if (ReceivedDecided) {
-            ReceivedLock.unlock();
-            return Received;
-        }
         try {
-            ReceivedCond.await();
+            if (!ReceivedDecided) {
+                ReceivedCond.await();
+            }
         } catch (InterruptedException ex1) {
             ex1.printStackTrace();
         } finally {
@@ -160,12 +158,10 @@ public class Request {
 
     public boolean getConnected() {
         ConnectedLock.lock();
-        if (ConnectedDecided) {
-            ConnectedLock.unlock();
-            return Connected;
-        }
         try {
-            ConnectedCond.await();
+            if (!ConnectedDecided) {
+                ConnectedCond.await();
+            }
         } catch (InterruptedException ex) {
             ex.printStackTrace();
         } finally {

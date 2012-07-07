@@ -32,7 +32,7 @@ public class ServerCommunicator {
 
     private String Server;
     private int Port;
-    private String ServerStrForProxy;
+    private String ServerForHost;
     private LoginInfo LoginInfo;
     //ソケット
     private HTTP_Proxy Proxy;
@@ -48,7 +48,7 @@ public class ServerCommunicator {
         Proxy = proxy;
         LoginInfo = info;
         Port = port;
-        ServerStrForProxy = Server + ":" + Integer.toString(port);
+        ServerForHost = Server + ":" + Integer.toString(port);
     }
 
     public boolean sendConnectionStart() {
@@ -133,18 +133,17 @@ public class ServerCommunicator {
                 req.setConnected(true);
                 //ヘッダ送信
                 if (is_proxy) {
-                    TextOut.write("POST http://" + ServerStrForProxy +
+                    TextOut.write("POST http://" + ServerForHost +
                                   "/index.cgi HTTP/1.1\r\n");
                     TextOut.write("Proxy-Connection: close\r\n");
                     if (Proxy.isProxyAuth()) {
                         TextOut.write(Proxy.getProxyAuthHeader());
                     }
-                    TextOut.write("HOST: " + ServerStrForProxy + "\r\n");
                 } else {
                     TextOut.write("POST /index.cgi HTTP/1.1\r\n");
                     TextOut.write("Connection: close\r\n");
-                    TextOut.write("HOST: " + Server + "\r\n");
                 }
+                TextOut.write("HOST: " + ServerForHost + "\r\n");
                 TextOut.write("User-Agent: Haduki\r\n");
                 TextOut.write("Accept: */*\r\n");
                 TextOut.write("Content-Type: image/x-png\r\n"); //バイナリを送れる
@@ -166,11 +165,15 @@ public class ServerCommunicator {
                         break;
                     }
                     str_c = str.toLowerCase().toCharArray();
+                    //デバッグ
+                    System.out.println(str);
+                    /*
                     if (line == 0 && !Request.strcmp_end(str_c, HEADER_200_C)) {
                         //リクエスト失敗
                         is_err = true;
                         break;
                     }
+*/
                     line++;
                 } while (!(str_c.length == 0));
             } catch (Exception ex) {
@@ -189,8 +192,14 @@ public class ServerCommunicator {
             boolean signal = false;
             OutputStream req_os = req.getRecvOutputStream();
             try {
+                //デバッグ
+                while ((size = DataIn.read( Buffer, 0,
+                                               Request.BUFF_SIZE)) > 0) {
+                System.out.println(new String(Buffer,0,size));
+                /*
                 while ((size = Crypt.inputData(DataIn, Buffer, 0,
                                                Request.BUFF_SIZE)) > 0) {
+                */
                     total_size += size;
                     try {
                         req_os.write(Buffer, 0, size);
@@ -217,7 +226,7 @@ public class ServerCommunicator {
                 } catch (IOException ex2) {
                     ex2.printStackTrace();
                 }
-                if(total_size > 0){
+                if (total_size > 0) {
                     Crypt.nextStream();
                 }
             }

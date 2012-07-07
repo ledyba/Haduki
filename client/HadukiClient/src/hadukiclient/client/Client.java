@@ -99,10 +99,11 @@ public class Client extends Thread {
     }
 
     public void waitDisconnection() {
-        if(Disconneted)return;
         ConnectedLock.lock();
         try {
-            DisconnectedCond.await();
+            if(!Disconneted){
+                DisconnectedCond.await();
+            }
         } catch (InterruptedException ex) {
             ex.printStackTrace();
         } finally {

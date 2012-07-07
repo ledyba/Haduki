@@ -66,13 +66,12 @@ public class RequestQueue extends AbstractQueue<Request> {
     }
 
     public boolean change_wait(boolean must_offered) {
-        if (this.size() > 0) {
-            return true;
-        }
         Lock.lock();
         try {
-            Cond.await();
-            if(!Offered && must_offered)change_wait(true);
+            if (this.size() <= 0) {
+                Cond.await();
+                if (!Offered && must_offered) change_wait(true);
+            }
         } catch (InterruptedException ex) {
             ex.printStackTrace();
         } finally {
