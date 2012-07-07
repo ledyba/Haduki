@@ -1,0 +1,3 @@
+Manifest-Version: 1.0
+Main-Class: hadukiclient.HadukiGUI
+Class-Path: ./lib/bcprov-jdk15-136.jar ./lib/commons-codec-1.3.jar ./lib/commons-httpclient-3.0.1.jar ./lib/commons-logging-1.1.jar ./lib/commons-logging-adapters-1.1.jar ./lib/commons-logging-api-1.1.jar

@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<properties>
+	<comment>サーバ設定</comment>
+	<entry key="Server">ledyba.ddo.jp</entry>
+	<entry key="ServerPort">44444</entry>
+	<entry key="ProxyServerUsing">true</entry>
+	<entry key="ProxyServer">ledyba.ddo.jp</entry>
+	<entry key="ProxyServerPort">44444</entry>
+	<entry key="ProxyServerUser">MEDIACENTER\k28username</entry>
+</properties>
