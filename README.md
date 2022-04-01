@@ -43,5 +43,5 @@ server/以下に配置
 
 ライセンス
 ======
-GPL v3 or later
+AGPL v3 or later
 
